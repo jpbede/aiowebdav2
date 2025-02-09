@@ -15,16 +15,16 @@ import aiofiles
 import aiohttp
 from aiowebdav2.connection import WebDAVSettings
 from aiowebdav2.exceptions import (
-    ConnectionException,
-    LocalResourceNotFound,
-    MethodNotSupported,
-    NoConnection,
-    NotEnoughSpace,
-    OptionNotValid,
-    RemoteParentNotFound,
-    RemoteResourceNotFound,
-    ResourceLocked,
-    ResponseErrorCode,
+    ConnectionExceptionError,
+    LocalResourceNotFoundError,
+    MethodNotSupportedError,
+    NoConnectionError,
+    NotEnoughSpaceError,
+    OptionNotValidError,
+    RemoteParentNotFoundError,
+    RemoteResourceNotFoundError,
+    ResourceLockedError,
+    ResponseErrorCodeError,
 )
 from aiowebdav2.typing_helper import AsyncWriteBuffer
 from aiowebdav2.urn import Urn
@@ -81,9 +81,9 @@ def wrap_connection_error(fn):
             if asyncio.iscoroutine(res):
                 res = await res
         except aiohttp.ClientConnectionError:
-            raise NoConnection(self.webdav.hostname)
+            raise NoConnectionError(self.webdav.hostname)
         except aiohttp.ClientResponseError as re:
-            raise ConnectionException(re)
+            raise ConnectionExceptionError(re)
         else:
             return res
 
@@ -255,18 +255,18 @@ class Client:
             proxy_auth=self.webdav.proxy_auth,
         )
         if response.status == 507:
-            raise NotEnoughSpace()
+            raise NotEnoughSpaceError()
         if response.status == 404:
-            raise RemoteResourceNotFound(path=path)
+            raise RemoteResourceNotFoundError(path=path)
         if response.status == 423:
-            raise ResourceLocked(path=path)
+            raise ResourceLockedError(path=path)
         if response.status == 405:
-            raise MethodNotSupported(name=action, server=self.webdav.hostname)
+            raise MethodNotSupportedError(name=action, server=self.webdav.hostname)
         if response.status >= 400:
-            raise ResponseErrorCode(
+            raise ResponseErrorCodeError(
                 url=self.get_url(path),
                 code=response.status,
-                message=await response.read(),
+                message=str(await response.read()),
             )
         return response
 
@@ -304,7 +304,7 @@ class Client:
         if directory_urn.path() != Client.root and not await self.check(
             directory_urn.path()
         ):
-            raise RemoteResourceNotFound(directory_urn.path())
+            raise RemoteResourceNotFoundError(directory_urn.path())
 
         path = Urn.normalize_path(self.get_full_path(directory_urn))
         response = await self.execute_request(
@@ -355,7 +355,7 @@ class Client:
         urn = Urn(remote_path)
         try:
             response = await self.execute_request(action="check", path=urn.quote())
-        except RemoteResourceNotFound:
+        except RemoteResourceNotFoundError:
             return False
 
         if int(response.status) == 200:
@@ -376,7 +376,7 @@ class Client:
             if recursive == True:
                 await self.mkdir(directory_urn.parent(), recursive=True)
             else:
-                raise RemoteParentNotFound(directory_urn.path())
+                raise RemoteParentNotFoundError(directory_urn.path())
 
         try:
             print(f"Making Directory {remote_path}")
@@ -384,7 +384,7 @@ class Client:
                 action="mkdir", path=directory_urn.quote()
             )
             print(f"Made Directory {remote_path}")
-        except MethodNotSupported:
+        except MethodNotSupportedError:
             # Yandex WebDAV returns 405 status code when directory already exists
             return True
         return response.status in (200, 201)
@@ -397,10 +397,10 @@ class Client:
         """
         urn = Urn(remote_path)
         if await self.is_dir(urn.path()):
-            raise OptionNotValid(name="remote_path", value=remote_path)
+            raise OptionNotValidError(name="remote_path", value=remote_path)
 
         if not await self.check(urn.path()):
-            raise RemoteResourceNotFound(urn.path())
+            raise RemoteResourceNotFoundError(urn.path())
 
         response = await self.execute_request(action="download", path=urn.quote())
         return iter_content(response, self.chunk_size)
@@ -429,10 +429,10 @@ class Client:
         """
         urn = Urn(remote_path)
         if await self.is_dir(urn.path()):
-            raise OptionNotValid(name="remote_path", value=remote_path)
+            raise OptionNotValidError(name="remote_path", value=remote_path)
 
         if not await self.check(urn.path()):
-            raise RemoteResourceNotFound(urn.path())
+            raise RemoteResourceNotFoundError(urn.path())
 
         response = await self.execute_request(action="download", path=urn.quote())
         clen_str = response.headers.get("content-length")
@@ -502,7 +502,7 @@ class Client:
         """
         urn = Urn(remote_path, directory=True)
         if not await self.is_dir(urn.path()):
-            raise OptionNotValid(name="remote_path", value=remote_path)
+            raise OptionNotValidError(name="remote_path", value=remote_path)
 
         if os.path.exists(local_path):
             shutil.rmtree(local_path)
@@ -542,13 +542,13 @@ class Client:
         """
         urn = Urn(remote_path)
         if await self.is_dir(urn.path()):
-            raise OptionNotValid(name="remote_path", value=remote_path)
+            raise OptionNotValidError(name="remote_path", value=remote_path)
 
         if os.path.isdir(local_path):
-            raise OptionNotValid(name="local_path", value=local_path)
+            raise OptionNotValidError(name="local_path", value=local_path)
 
         if not await self.check(urn.path()):
-            raise RemoteResourceNotFound(urn.path())
+            raise RemoteResourceNotFoundError(urn.path())
 
         async with aiofiles.open(local_path, "wb") as local_file:
             response = await self.execute_request("download", urn.quote())
@@ -579,10 +579,10 @@ class Client:
         """
         urn = Urn(remote_path)
         if urn.is_dir():
-            raise OptionNotValid(name="remote_path", value=remote_path)
+            raise OptionNotValidError(name="remote_path", value=remote_path)
 
         if not await self.check(urn.parent()):
-            raise RemoteParentNotFound(urn.path())
+            raise RemoteParentNotFoundError(urn.path())
 
         await self.execute_request(action="upload", path=urn.quote(), data=buff)
 
@@ -596,10 +596,10 @@ class Client:
         """
         urn = Urn(remote_path)
         if urn.is_dir():
-            raise OptionNotValid(name="remote_path", value=remote_path)
+            raise OptionNotValidError(name="remote_path", value=remote_path)
 
         if not await self.check(urn.parent()):
-            raise RemoteParentNotFound(urn.path())
+            raise RemoteParentNotFoundError(urn.path())
 
         await self.execute_request(action="upload", path=urn.quote(), data=buff)
 
@@ -652,13 +652,13 @@ class Client:
         """
         urn = Urn(remote_path, directory=True)
         if not urn.is_dir():
-            raise OptionNotValid(name="remote_path", value=remote_path)
+            raise OptionNotValidError(name="remote_path", value=remote_path)
 
         if not os.path.isdir(local_path):
-            raise OptionNotValid(name="local_path", value=local_path)
+            raise OptionNotValidError(name="local_path", value=local_path)
 
         if not os.path.exists(local_path):
-            raise LocalResourceNotFound(local_path)
+            raise LocalResourceNotFoundError(local_path)
 
         # if await self.check(urn.path()):
         #     await self.clean(urn.path()) fixme: may delete root
@@ -694,20 +694,20 @@ class Client:
         :param force:  if the directory isn't there it will creat the directory.
         """
         if not os.path.exists(local_path):
-            raise LocalResourceNotFound(local_path)
+            raise LocalResourceNotFoundError(local_path)
 
         urn = Urn(remote_path)
         if urn.is_dir():
-            raise OptionNotValid(name="remote_path", value=remote_path)
+            raise OptionNotValidError(name="remote_path", value=remote_path)
 
         if os.path.isdir(local_path):
-            raise OptionNotValid(name="local_path", value=local_path)
+            raise OptionNotValidError(name="local_path", value=local_path)
 
         if not await self.check(urn.parent()):
             if force == True:
                 await self.mkdir(urn.parent(), recursive=True)
             else:
-                raise RemoteParentNotFound(urn.path())
+                raise RemoteParentNotFoundError(urn.path())
 
         async with aiofiles.open(local_path, "rb") as local_file:
             total = os.path.getsize(local_path)
@@ -750,11 +750,11 @@ class Client:
         """
         urn_from = Urn(remote_path_from)
         if not await self.check(urn_from.path()):
-            raise RemoteResourceNotFound(urn_from.path())
+            raise RemoteResourceNotFoundError(urn_from.path())
 
         urn_to = Urn(remote_path_to)
         if not await self.check(urn_to.parent()):
-            raise RemoteParentNotFound(urn_to.path())
+            raise RemoteParentNotFoundError(urn_to.path())
 
         headers = [f"Destination: {self.get_url(urn_to.quote())}"]
         if await self.is_dir(urn_from.path()):
@@ -774,11 +774,11 @@ class Client:
         """
         urn_from = Urn(remote_path_from)
         if not await self.check(urn_from.path()):
-            raise RemoteResourceNotFound(urn_from.path())
+            raise RemoteResourceNotFoundError(urn_from.path())
 
         urn_to = Urn(remote_path_to)
         if not await self.check(urn_to.parent()):
-            raise RemoteParentNotFound(urn_to.path())
+            raise RemoteParentNotFoundError(urn_to.path())
 
         header_destination = f"Destination: {self.get_url(urn_to.quote())}"
         header_overwrite = "Overwrite: {flag}".format(flag="T" if overwrite else "F")
@@ -826,7 +826,7 @@ class Client:
         if not await self.check(urn.path()) and not await self.check(
             Urn(remote_path, directory=True).path()
         ):
-            raise RemoteResourceNotFound(remote_path)
+            raise RemoteResourceNotFoundError(remote_path)
 
     @wrap_connection_error
     async def is_dir(self, remote_path):
@@ -860,7 +860,7 @@ class Client:
         """
         urn = Urn(remote_path)
         if not await self.check(urn.path()):
-            raise RemoteResourceNotFound(urn.path())
+            raise RemoteResourceNotFoundError(urn.path())
 
         data = WebDavXmlUtils.create_get_property_request_content(option)
         response = await self.execute_request(
@@ -896,7 +896,7 @@ class Client:
         """
         urn = Urn(remote_path)
         if not await self.check(urn.path()):
-            raise RemoteResourceNotFound(urn.path())
+            raise RemoteResourceNotFoundError(urn.path())
 
         data = WebDavXmlUtils.create_set_property_batch_request_content(option)
         await self.execute_request(action="set_property", path=urn.quote(), data=data)
@@ -1078,16 +1078,16 @@ class Client:
     async def _validate_remote_directory(self, urn):
         """Validates remote directory."""
         if not await self.is_dir(urn.path()):
-            raise OptionNotValid(name="remote_path", value=urn.path())
+            raise OptionNotValidError(name="remote_path", value=urn.path())
 
     @staticmethod
     def _validate_local_directory(local_directory):
         """Validates local directory."""
         if not os.path.isdir(local_directory):
-            raise OptionNotValid(name="local_path", value=local_directory)
+            raise OptionNotValidError(name="local_path", value=local_directory)
 
         if not os.path.exists(local_directory):
-            raise LocalResourceNotFound(local_directory)
+            raise LocalResourceNotFoundError(local_directory)
 
     async def close(self):
         """Closes the connection to WebDAV server."""
@@ -1283,9 +1283,9 @@ class WebDavXmlUtils:
             node = tree.find(".//{DAV:}quota-available-bytes")
             if node is not None:
                 return int(node.text)
-            raise MethodNotSupported(name="free", server=hostname)
+            raise MethodNotSupportedError(name="free", server=hostname)
         except TypeError:
-            raise MethodNotSupported(name="free", server=hostname)
+            raise MethodNotSupportedError(name="free", server=hostname)
         except etree.XMLSyntaxError:
             return ""
 
@@ -1349,7 +1349,7 @@ class WebDavXmlUtils:
         )
         resource_type = response.find(".//{DAV:}resourcetype")
         if resource_type is None:
-            raise MethodNotSupported(name="is_dir", server=hostname)
+            raise MethodNotSupportedError(name="is_dir", server=hostname)
         dir_type = resource_type.find("{DAV:}collection")
 
         return True if dir_type is not None else False
@@ -1437,9 +1437,9 @@ class WebDavXmlUtils:
                 href_without_prefix = href.removeprefix(prefix)
                 if Urn.compare_path(n_path, href_without_prefix) is True:
                     return resp
-            raise RemoteResourceNotFound(path)
+            raise RemoteResourceNotFoundError(path)
         except etree.XMLSyntaxError:
-            raise MethodNotSupported(name="is_dir", server=hostname)
+            raise MethodNotSupportedError(name="is_dir", server=hostname)
 
 
 class LockClient(Client):
