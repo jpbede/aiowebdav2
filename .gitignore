@@ -1,0 +1,12 @@
+*.pyc
+/**/*.pyc
+/dist
+/*.egg-info
+/.eggs/
+.project
+.pydevproject
+/.settings/
+venv/
+.idea/
+build
+/aarontest
