@@ -70,5 +70,5 @@ class Urn:
     @staticmethod
     def compare_path(path_a: str, href: str) -> bool:
         """Compare paths."""
-        unqouted_path = Urn.separate + unquote(urlsplit(href).path)
-        return Urn.normalize_path(path_a) == Urn.normalize_path(unqouted_path)
+        unquoted_path = Urn.separate + unquote(urlsplit(href).path)
+        return Urn.normalize_path(path_a) == Urn.normalize_path(unquoted_path)
