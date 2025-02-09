@@ -1,158 +1,158 @@
 """Exceptions for aiowebdav2."""
 
-class WebDavException(Exception):
+
+class WebDavError(Exception):
     """Base class for all webdav exceptions."""
-    pass
 
 
-class NotValid(WebDavException):
+class NotValidError(WebDavError):
     """Base class for all not valid exceptions."""
-    pass
 
 
-class OptionNotValid(NotValid):
+class OptionNotValidError(NotValidError):
     """Exception for not valid options."""
 
-    def __init__(self, name, value, ns=""):
+    def __init__(self, name: str, value: str, ns: str = "") -> None:
         """Exception for not valid options."""
         self.name = name
         self.value = value
         self.ns = ns
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation of exception."""
         return f"Option ({self.ns}{self.name}={self.value}) have invalid name or value"
 
 
-class CertificateNotValid(NotValid):
+class CertificateNotValidError(NotValidError):
     """Exception for not valid certificate."""
-    pass
 
 
-class NotFound(WebDavException):
+class NotFoundError(WebDavError):
     """Base class for all not found exceptions."""
-    pass
 
 
-class LocalResourceNotFound(NotFound):
+class LocalResourceNotFoundError(NotFoundError):
     """Exception for not found local resource."""
 
-    def __init__(self, path):
+    def __init__(self, path: str) -> None:
         """Exception for not found local resource."""
         self.path = path
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation of exception."""
         return f"Local file: {self.path} not found"
 
 
-class RemoteResourceNotFound(NotFound):
+class RemoteResourceNotFoundError(NotFoundError):
     """Exception for not found remote resource."""
 
-    def __init__(self, path):
+    def __init__(self, path: str) -> None:
         """Exception for not found remote resource."""
         self.path = path
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation of exception."""
         return f"Remote resource: {self.path} not found"
 
 
-class RemoteParentNotFound(NotFound):
+class RemoteParentNotFoundError(NotFoundError):
     """Exception for not found remote parent."""
 
-    def __init__(self, path):
+    def __init__(self, path: str) -> None:
         """Exception for not found remote parent."""
         self.path = path
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation of exception."""
         return f"Remote parent for: {self.path} not found"
 
 
-class MethodNotSupported(WebDavException):
+class MethodNotSupportedError(WebDavError):
     """Exception for not supported method."""
 
-    def __init__(self, name, server):
+    def __init__(self, name: str, server: str) -> None:
         """Exception for not supported method."""
         self.name = name
         self.server = server
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation of exception."""
         return f"Method '{self.name}' not supported for {self.server}"
 
 
-class ConnectionException(WebDavException):
+class ConnectionExceptionError(WebDavError):
     """Exception for connection error."""
 
-    def __init__(self, exception):
+    def __init__(self, exception: Exception) -> None:
         """Exception for connection error."""
         self.exception = exception
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation of exception."""
         return self.exception.__str__()
 
 
-class NoConnection(WebDavException):
+class NoConnectionError(WebDavError):
     """Exception for no connection."""
 
-    def __init__(self, hostname):
+    def __init__(self, hostname: str) -> None:
         """Exception for no connection."""
         self.hostname = hostname
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation of exception."""
         return f"No connection with {self.hostname}"
 
 
 # This exception left only for supporting original library interface.
-class NotConnection(WebDavException):
+class NotConnectionError(WebDavError):
     """Exception for no connection."""
 
-    def __init__(self, hostname):
+    def __init__(self, hostname: str) -> None:
         """Exception for no connection."""
         self.hostname = hostname
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation of exception."""
         return f"No connection with {self.hostname}"
 
 
-class ResponseErrorCode(WebDavException):
+class ResponseErrorCodeError(WebDavError):
     """Exception for response error code."""
 
-    def __init__(self, url, code, message):
+    def __init__(self, url: str, code: int, message: str) -> None:
         """Exception for response error code."""
         self.url = url
         self.code = code
         self.message = message
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation of exception."""
-        return f"Request to {self.url} failed with code {self.code} and message: {self.message}"
+        return (
+            f"Request to {self.url} failed with code {self.code} "
+            f"and message: {self.message}"
+        )
 
 
-class NotEnoughSpace(WebDavException):
+class NotEnoughSpaceError(WebDavError):
     """Exception for not enough space on the server."""
 
-    def __init__(self):
-        """Exception for not enough space on the server"""
+    def __init__(self) -> None:
+        """Exception for not enough space on the server."""
         self.message = "Not enough space on the server"
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation of exception."""
         return self.message
 
 
-class ResourceLocked(WebDavException):
+class ResourceLockedError(WebDavError):
     """Exception for locked resource."""
 
-    def __init__(self, path):
+    def __init__(self, path: str) -> None:
         """Exception for locked resource."""
         self.path = path
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation of exception."""
         return f"Resource {self.path} locked"
