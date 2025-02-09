@@ -24,8 +24,8 @@ classifiers = [
 [tool.poetry.dependencies]
 python = "^3.11"
 aiohttp = ">=3.8.0"
-lxml = ">=4.6.3"
 aiofiles = ">=0.7.0"
+lxml = "^5.3.0"
 
 [tool.poetry.group.dev.dependencies]
 codespell = "2.4.1"
@@ -123,14 +123,19 @@ disable = [
 ignore-imports = true
 
 [tool.pylint.FORMAT]
-max-line-length = 88
+max-line-length = 100
 
 [tool.pytest.ini_options]
 addopts = "--cov"
 asyncio_mode = "auto"
 
 [tool.ruff]
+line-length = 88
 target-version = "py311"
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 120
+max-line-length = 120
 
 [tool.ruff.lint]
 ignore = [
@@ -144,6 +149,9 @@ ignore = [
   "COM819", # avoid conflicts
   "ISC001", # avoid conflicts
   "ISC002", # avoid conflicts
+  "S320", # ignore lxml warnings for now
+  "DTZ007",
+  "ASYNC109",
 ]
 select = ["ALL"]
 
