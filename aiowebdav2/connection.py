@@ -1,35 +1,41 @@
-"""WebDAV connection settings"""
-from os.path import exists
+"""WebDAV connection settings."""
+
+from typing import TYPE_CHECKING, ClassVar
 
 import aiohttp
-from aiowebdav2.exceptions import *
+
+from aiowebdav2.exceptions import OptionNotValidError
 from aiowebdav2.urn import Urn
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class ConnectionSettings:
-    """Base class for connection settings"""
+    """Base class for connection settings."""
 
-    def is_valid(self):
-        """Method checks is settings are valid
-        :return: True if settings are valid otherwise False
+    def is_valid(self) -> None:
+        """Check settings are valid.
+
+        :return: True if settings are valid otherwise False.
         """
 
-    def valid(self):
-        """Method checks is settings are valid"""
+    def valid(self) -> bool:
+        """Check if settings are valid."""
         try:
             self.is_valid()
-        except OptionNotValid:
+        except OptionNotValidError:
             return False
         else:
             return True
 
 
 class WebDAVSettings(ConnectionSettings):
-    """WebDAV connection settings"""
+    """WebDAV connection settings."""
 
     ns = "webdav:"
     prefix = "webdav_"
-    keys = {
+    keys: ClassVar[dict[str]] = {
         "hostname",
         "login",
         "password",
@@ -47,8 +53,8 @@ class WebDAVSettings(ConnectionSettings):
         "proxy_auth",
     }
 
-    def __init__(self, options: dict):
-        """WebDAV connection settings"""
+    def __init__(self, options: dict) -> None:
+        """WebDAV connection settings."""
         self.hostname = None
         self.login = None
         self.password = None
@@ -64,6 +70,8 @@ class WebDAVSettings(ConnectionSettings):
         self.chunk_size = 65536
         self.proxy = None
         self.proxy_auth = None
+        self.cert_path: Path | None = None
+        self.key_path: Path | None  = None
 
         self.options = {}
 
@@ -77,23 +85,23 @@ class WebDAVSettings(ConnectionSettings):
         self.root = self.root.rstrip(Urn.separate)
         self.hostname = self.hostname.rstrip(Urn.separate)
         self.ssl = None if not self.ssl else self.ssl
-        if isinstance(self.timeout, (int, float)):
+        if isinstance(self.timeout, int | float):
             self.timeout = aiohttp.ClientTimeout(self.timeout)
 
-    def is_valid(self):
-        """Method checks is settings are valid"""
+    def is_valid(self) -> bool:
+        """Check settings are valid."""
         if not self.hostname:
-            raise OptionNotValid(name="hostname", value=self.hostname, ns=self.ns)
+            raise OptionNotValidError(name="hostname", value=self.hostname, ns=self.ns)
 
-        if self.cert_path and not exists(self.cert_path):
-            raise OptionNotValid(name="cert_path", value=self.cert_path, ns=self.ns)
+        if self.cert_path and not self.cert_path.exists():
+            raise OptionNotValidError(name="cert_path", value=self.cert_path, ns=self.ns)
 
-        if self.key_path and not exists(self.key_path):
-            raise OptionNotValid(name="key_path", value=self.key_path, ns=self.ns)
+        if self.key_path and not self.key_path.exists():
+            raise OptionNotValidError(name="key_path", value=self.key_path, ns=self.ns)
 
         if self.key_path and not self.cert_path:
-            raise OptionNotValid(name="cert_path", value=self.cert_path, ns=self.ns)
+            raise OptionNotValidError(name="cert_path", value=self.cert_path, ns=self.ns)
 
         if self.password and not self.login:
-            raise OptionNotValid(name="login", value=self.login, ns=self.ns)
+            raise OptionNotValidError(name="login", value=self.login, ns=self.ns)
         return True
