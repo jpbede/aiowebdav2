@@ -26,7 +26,7 @@ from aiowebdav2.exceptions import (
     ResourceLocked,
     ResponseErrorCode,
 )
-from aiowebdav2.typing import AsyncWriteBuffer
+from aiowebdav2.typing_helper import AsyncWriteBuffer
 from aiowebdav2.urn import Urn
 from lxml import etree
 
