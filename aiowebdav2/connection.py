@@ -1,3 +1,4 @@
+"""WebDAV connection settings"""
 from os.path import exists
 
 import aiohttp
@@ -6,12 +7,15 @@ from aiowebdav2.urn import Urn
 
 
 class ConnectionSettings:
+    """Base class for connection settings"""
+
     def is_valid(self):
         """Method checks is settings are valid
         :return: True if settings are valid otherwise False
         """
 
     def valid(self):
+        """Method checks is settings are valid"""
         try:
             self.is_valid()
         except OptionNotValid:
@@ -21,6 +25,8 @@ class ConnectionSettings:
 
 
 class WebDAVSettings(ConnectionSettings):
+    """WebDAV connection settings"""
+
     ns = "webdav:"
     prefix = "webdav_"
     keys = {
@@ -42,6 +48,7 @@ class WebDAVSettings(ConnectionSettings):
     }
 
     def __init__(self, options: dict):
+        """WebDAV connection settings"""
         self.hostname = None
         self.login = None
         self.password = None
@@ -74,6 +81,7 @@ class WebDAVSettings(ConnectionSettings):
             self.timeout = aiohttp.ClientTimeout(self.timeout)
 
     def is_valid(self):
+        """Method checks is settings are valid"""
         if not self.hostname:
             raise OptionNotValid(name="hostname", value=self.hostname, ns=self.ns)
 

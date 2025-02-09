@@ -1,3 +1,4 @@
+"""WebDAV client implementation."""
 import asyncio
 from collections.abc import AsyncIterable, Awaitable, Callable
 import functools
@@ -70,6 +71,8 @@ def get_options(option_type: type[WebDAVSettings], from_options) -> dict:
 
 
 def wrap_connection_error(fn):
+    """Decorator to handle aiohttp errors."""
+
     @functools.wraps(fn)
     async def _wrapper(self, *args, **kw):
         log.debug("Requesting %s(%s, %s)", fn, args, kw)
@@ -88,6 +91,7 @@ def wrap_connection_error(fn):
 
 
 async def iter_content(response: aiohttp.ClientResponse, chunk_size) -> AsyncIterable:
+    """Async generator to iterate over response content by chunks."""
     while chunk := await response.content.read(chunk_size):
         yield chunk
 
@@ -923,10 +927,21 @@ class Client:
         )
 
     def resource(self, remote_path):
+        """Returns a resource object for the given path.
+
+        :param remote_path: the path to remote resource.
+        :return: Resource object for the given path.
+        """
         urn = Urn(remote_path)
         return Resource(self, urn)
 
     async def push(self, remote_directory, local_directory):
+        """Pushes local directory to remote directory on WebDAV server.
+
+        :param remote_directory: the path to remote directory for pushing.
+        :param local_directory: the path to local directory for pushing.
+        :return: True if local directory is more recent than remote directory, False otherwise.
+        """
         def prune(src, exp):
             return [sub(exp, "", item) for item in src]
 
@@ -961,6 +976,12 @@ class Client:
         return updated
 
     async def pull(self, remote_directory, local_directory):
+        """Pulls remote directory to local directory.
+
+        :param remote_directory: the path to remote directory for pulling.
+        :param local_directory: the path to local directory for pulling.
+        :return: True if remote directory is more recent than local directory, False otherwise.
+        """
         def prune(src, exp):
             return [sub(exp, "", item) for item in src]
 
@@ -1026,6 +1047,11 @@ class Client:
             return None
 
     async def sync(self, remote_directory, local_directory):
+        """Synchronizes local and remote directories.
+
+        :param remote_directory: the path to remote directory for synchronization.
+        :param local_directory: the path to local directory for synchronization.
+        """
         await self.pull(
             remote_directory=remote_directory, local_directory=local_directory
         )
@@ -1034,17 +1060,29 @@ class Client:
         )
 
     async def publish(self, path: str):
+        """Publishes resource on WebDAV server.
+        More information you can find by link http://webdav.org/specs/rfc4918.html#METHOD_PUBLISH
+
+        :param path: the path to resource for publishing.
+        """
         await self.execute_request("publish", path)
 
     async def unpublish(self, path: str):
+        """Unpublishes resource on WebDAV server.
+        More information you can find by link http://webdav.org/specs/rfc4918.html
+
+        :param path: the path to resource for unpublishing.
+        """
         await self.execute_request("unpublish", path)
 
     async def _validate_remote_directory(self, urn):
+        """Validates remote directory."""
         if not await self.is_dir(urn.path()):
             raise OptionNotValid(name="remote_path", value=urn.path())
 
     @staticmethod
     def _validate_local_directory(local_directory):
+        """Validates local directory."""
         if not os.path.isdir(local_directory):
             raise OptionNotValid(name="local_path", value=local_directory)
 
@@ -1052,27 +1090,36 @@ class Client:
             raise LocalResourceNotFound(local_directory)
 
     async def close(self):
+        """Closes the connection to WebDAV server."""
         await self.session.close()
 
     async def __aenter__(self):
+        """Async enter."""
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async exit."""
         await self.close()
 
 
 class Resource:
+    """Representation of resource on WebDAV server."""
+
     def __init__(self, client: Client, urn):
+        """Representation of resource on WebDAV server."""
         self.client = client
         self.urn = urn
 
     def __str__(self):
+        """Returns string representation of the resource."""
         return f"resource {self.urn.path()}"
 
     async def is_dir(self):
+        """Checks is the resource directory."""
         return await self.client.is_dir(self.urn.path())
 
     async def rename(self, new_name):
+        """Renames the resource."""
         old_path = self.urn.path()
         parent_path = self.urn.parent()
         new_name = Urn(new_name).filename()
@@ -1082,6 +1129,7 @@ class Resource:
         self.urn = Urn(new_path)
 
     async def move(self, remote_path):
+        """Moves the resource to another place."""
         new_urn = Urn(remote_path)
         await self.client.move(
             remote_path_from=self.urn.path(), remote_path_to=new_urn.path()
@@ -1089,6 +1137,7 @@ class Resource:
         self.urn = new_urn
 
     async def copy(self, remote_path):
+        """Copies the resource to another place."""
         urn = Urn(remote_path)
         await self.client.copy(
             remote_path_from=self.urn.path(), remote_path_to=remote_path
@@ -1096,6 +1145,7 @@ class Resource:
         return Resource(self.client, urn)
 
     async def info(self, params=None):
+        """Gets information about resource on WebDAV."""
         info = await self.client.info(self.urn.path())
         if not params:
             return info
@@ -1103,46 +1153,55 @@ class Resource:
         return {key: value for (key, value) in info.items() if key in params}
 
     async def clean(self):
+        """Cleans (Deletes) the resource."""
         return await self.client.clean(self.urn.path())
 
     async def check(self):
+        """Checks is the resource exists."""
         return await self.client.check(self.urn.path())
 
     async def read_from(self, buff):
+        """Reads the resource to buffer."""
         await self.client.upload_to(buff=buff, remote_path=self.urn.path())
 
     async def read(self, local_path):
+        """Reads the resource to local path."""
         return await self.client.upload(
             local_path=local_path, remote_path=self.urn.path()
         )
 
     async def write_to(self, buff):
+        """Writes the buffer to the resource."""
         return await self.client.download_from(buff=buff, remote_path=self.urn.path())
 
     async def write(self, local_path):
+        """Writes the local path to the resource."""
         return await self.client.download(
             local_path=local_path, remote_path=self.urn.path()
         )
 
     async def publish(self):
+        """Publishes the resource."""
         return await self.client.publish(self.urn.path())
 
     async def unpublish(self):
+        """Unpublishes the resource."""
         return await self.client.unpublish(self.urn.path())
 
     async def get_property(self, option):
+        """Gets metadata property of the resource."""
         return await self.client.get_property(
             remote_path=self.urn.path(), option=option
         )
 
     async def set_property(self, option, value):
+        """Sets metadata property of the resource."""
         option["value"] = value.__str__()
         await self.client.set_property(remote_path=self.urn.path(), option=option)
 
 
 class WebDavXmlUtils:
-    def __init__(self):
-        pass
+    """WebDAV XML utils."""
 
     @staticmethod
     def parse_get_list_info_response(content):
@@ -1384,7 +1443,10 @@ class WebDavXmlUtils:
 
 
 class LockClient(Client):
+    """Client for handling locks on WebDAV server."""
+
     def __init__(self, client, lock_path, lock_token):
+        """Client for handling locks on WebDAV server."""
         super().__init__([])
         self.session = client.session
         self.webdav = client.webdav
@@ -1395,15 +1457,18 @@ class LockClient(Client):
         self.__lock_token = lock_token
 
     def get_headers(self, action, headers_ext=None):
+        """Gets headers for request to WebDAV server."""
         headers = super().get_headers(action, headers_ext)
         headers["Lock-Token"] = self.__lock_token
         headers["If"] = "(%s)" % self.__lock_token
         return headers
 
     async def __aenter__(self):
+        """Async enter."""
         await self.execute_request(action="lock", path=self.__lock_path)
         return await super().__aenter__()
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async exit."""
         await super().__aexit__()
         await self.execute_request(action="unlock", path=self.__lock_path)
