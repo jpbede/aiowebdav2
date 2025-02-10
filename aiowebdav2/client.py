@@ -221,10 +221,15 @@ class Client:
                             the specified action.
         :return: HTTP response of request.
         """
+        url = self.get_url(path)
+        method = self.requests[action]
+
+        _LOGGER.debug("Request to %s with method %s", url, method)
+
         try:
             response = await self._session.request(
-                method=self.requests[action],
-                url=self.get_url(path),
+                method=method,
+                url=url,
                 auth=BasicAuth(self._username, self._password)
                 if (not self._options.token and not self._session.auth)
                 and (self._username and self._password)
@@ -240,6 +245,8 @@ class Client:
             raise NoConnectionError(self._url) from err
         except ClientResponseError as re:
             raise ConnectionExceptionError(re) from re
+
+        _LOGGER.debug("Got response with status: %s", response.status)
 
         if response.status == 401:
             raise UnauthorizedError(self._url)
