@@ -71,7 +71,7 @@ class WebDAVSettings(ConnectionSettings):
         self.proxy = None
         self.proxy_auth = None
         self.cert_path: Path | None = None
-        self.key_path: Path | None  = None
+        self.key_path: Path | None = None
 
         self.options = {}
 
@@ -94,13 +94,17 @@ class WebDAVSettings(ConnectionSettings):
             raise OptionNotValidError(name="hostname", value=self.hostname, ns=self.ns)
 
         if self.cert_path and not self.cert_path.exists():
-            raise OptionNotValidError(name="cert_path", value=self.cert_path, ns=self.ns)
+            raise OptionNotValidError(
+                name="cert_path", value=self.cert_path, ns=self.ns
+            )
 
         if self.key_path and not self.key_path.exists():
             raise OptionNotValidError(name="key_path", value=self.key_path, ns=self.ns)
 
         if self.key_path and not self.cert_path:
-            raise OptionNotValidError(name="cert_path", value=self.cert_path, ns=self.ns)
+            raise OptionNotValidError(
+                name="cert_path", value=self.cert_path, ns=self.ns
+            )
 
         if self.password and not self.login:
             raise OptionNotValidError(name="login", value=self.login, ns=self.ns)

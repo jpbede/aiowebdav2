@@ -10,3 +10,5 @@ venv/
 .idea/
 build
 /aarontest
+node_modules
+.coverage

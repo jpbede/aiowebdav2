@@ -334,7 +334,7 @@ class Client:
         )
         if get_info:
             subfiles = WebDavXmlUtils.parse_get_list_info_response(
-                str(await response.read())
+                await response.read()
             )
             return [
                 subfile
@@ -342,7 +342,7 @@ class Client:
                 if Urn.compare_path(path, subfile.get("path")) is False
             ]
 
-        urns = WebDavXmlUtils.parse_get_list_response(str(await response.read()))
+        urns = WebDavXmlUtils.parse_get_list_response(await response.read())
 
         return [
             urn.filename()
@@ -361,7 +361,7 @@ class Client:
         data = WebDavXmlUtils.create_free_space_request_content()
         response = await self.execute_request(action="free", path="", data=data)
         return WebDavXmlUtils.parse_free_space_response(
-            str(await response.read()), self.webdav.hostname
+            await response.read(), self.webdav.hostname
         )
 
     @wrap_connection_error
@@ -886,7 +886,7 @@ class Client:
         response = await self.execute_request(action="info", path=urn.quote())
         path = self.get_full_path(urn)
         return WebDavXmlUtils.parse_info_response(
-            content=str(await response.read()), path=path, hostname=self.webdav.hostname
+            content=await response.read(), path=path, hostname=self.webdav.hostname
         )
 
     async def _check_remote_resource(self, remote_path: str, urn: Urn) -> None:
@@ -912,7 +912,7 @@ class Client:
         )
         path = self.get_full_path(urn)
         return WebDavXmlUtils.parse_is_dir_response(
-            content=str(await response.read()), path=path, hostname=self.webdav.hostname
+            content=await response.read(), path=path, hostname=self.webdav.hostname
         )
 
     @wrap_connection_error
@@ -936,7 +936,7 @@ class Client:
             action="get_property", path=urn.quote(), data=data
         )
         return WebDavXmlUtils.parse_get_property_response(
-            str(await response.read()), option["name"]
+            await response.read(), option["name"]
         )
 
     @wrap_connection_error
@@ -1285,7 +1285,7 @@ class WebDavXmlUtils:
     """WebDAV XML utils."""
 
     @staticmethod
-    def parse_get_list_info_response(content: str) -> list[dict]:
+    def parse_get_list_info_response(content: bytes) -> list[dict]:
         """Parse of response content XML from WebDAV server and extract file and directory infos.
 
         :param content: the XML content of HTTP response from WebDAV server for getting list of files by remote path.
@@ -1318,7 +1318,7 @@ class WebDavXmlUtils:
             return infos
 
     @staticmethod
-    def parse_get_list_response(content: str) -> list:
+    def parse_get_list_response(content: bytes) -> list[Urn]:
         """Parse of response content XML from WebDAV server and extract file and directory names.
 
         :param content: the XML content of HTTP response from WebDAV server for getting list of files by remote path.
@@ -1353,7 +1353,7 @@ class WebDavXmlUtils:
         return WebDavXmlUtils.etree_to_string(tree)
 
     @staticmethod
-    def parse_free_space_response(content: str, hostname: str) -> int | None:
+    def parse_free_space_response(content: bytes, hostname: str) -> int | None:
         """Parse of response content XML from WebDAV server and extract an amount of free space.
 
         :param content: the XML content of HTTP response from WebDAV server for getting free space.
@@ -1398,7 +1398,7 @@ class WebDavXmlUtils:
         return info
 
     @staticmethod
-    def parse_info_response(content: str, path: str, hostname: str) -> dict:
+    def parse_info_response(content: bytes, path: str, hostname: str) -> dict:
         """Parse of response content XML from WebDAV server and extract an information about resource.
 
         :param content: the XML content of HTTP response from WebDAV server.
@@ -1418,7 +1418,7 @@ class WebDavXmlUtils:
         return WebDavXmlUtils.get_info_from_response(response)
 
     @staticmethod
-    def parse_is_dir_response(content: str, path: str, hostname: str) -> bool:
+    def parse_is_dir_response(content: bytes, path: str, hostname: str) -> bool:
         """Parse of response content XML from WebDAV server and extract an information about resource.
 
         :param content: the XML content of HTTP response from WebDAV server.
@@ -1454,7 +1454,7 @@ class WebDavXmlUtils:
         return WebDavXmlUtils.etree_to_string(tree)
 
     @staticmethod
-    def parse_get_property_response(content: str, name: str) -> str:
+    def parse_get_property_response(content: bytes, name: str) -> str:
         """Parse of response content XML from WebDAV server for getting metadata property value for some resource.
 
         :param content: the XML content of response as string.
@@ -1498,7 +1498,7 @@ class WebDavXmlUtils:
 
     @staticmethod
     def extract_response_for_path(
-        content: str, path: str, hostname: str
+        content: bytes, path: str, hostname: str
     ) -> etree.Element:
         """Extract single response for specified remote resource.
 

@@ -1,4 +1,5 @@
 """URN module for aiowebdav2."""
+
 from re import sub
 from urllib.parse import quote, unquote, urlsplit
 
