@@ -9,7 +9,7 @@ import pytest
 
 from aiowebdav2 import Client
 from aiowebdav2.client import ClientOptions
-from aiowebdav2.exceptions import MethodNotSupportedError
+from aiowebdav2.exceptions import MethodNotSupportedError, UnauthorizedError
 from aiowebdav2.models import Property, PropertyRequest
 
 from . import load_responses
@@ -361,3 +361,19 @@ async def test_client_with_external_session() -> None:
 
     await external_session.close()
     assert c._session.closed
+
+
+async def test_unauthorized(client: Client, responses: aioresponses) -> None:
+    """Test unauthorized."""
+    responses.add(
+        "https://webdav.example.com/test_dir/test.txt",
+        "PROPFIND",
+        headers={"Accept": "*/*", "Depth": "0"},
+        content_type="application/xml",
+        status=401,
+    )
+
+    with pytest.raises(
+        UnauthorizedError, match="Unauthorized access to https://webdav.example.com"
+    ):
+        await client.info("/test_dir/test.txt")
