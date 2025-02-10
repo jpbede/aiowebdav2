@@ -373,5 +373,7 @@ async def test_unauthorized(client: Client, responses: aioresponses) -> None:
         status=401,
     )
 
-    with pytest.raises(UnauthorizedError):
+    with pytest.raises(
+        UnauthorizedError, match="Unauthorized access to https://webdav.example.com"
+    ):
         await client.info("/test_dir/test.txt")
