@@ -1,7 +1,8 @@
 """WebDAV client implementation."""
 
 import asyncio
-from collections.abc import AsyncIterable, Awaitable, Callable, Coroutine, Mapping
+from collections.abc import AsyncIterable, Awaitable, Callable, Coroutine
+from dataclasses import dataclass
 import logging
 from pathlib import Path
 from re import sub
@@ -10,11 +11,18 @@ from typing import IO, Any, ClassVar, Self
 from urllib.parse import unquote
 
 import aiofiles
-import aiohttp
-from aiohttp import ClientSession
+from aiohttp import (
+    BasicAuth,
+    ClientConnectionError,
+    ClientResponse,
+    ClientResponseError,
+    ClientSession,
+    ClientTimeout,
+)
+from aiohttp.client import DEFAULT_TIMEOUT
 from dateutil.parser import parse as dateutil_parse
+import yarl
 
-from .connection import WebDAVSettings
 from .exceptions import (
     ConnectionExceptionError,
     LocalResourceNotFoundError,
@@ -36,49 +44,36 @@ _LOGGER = logging.getLogger(__name__)
 
 CONST_ACCEPT_ALL = "Accept: */*"
 CONST_DEPTH_1 = "Depth: 1"
-
-
-def get_options(
-    option_type: type[WebDAVSettings],
-    from_options: Mapping[str, str | int | bool | None],
-) -> Mapping[str, str | int | bool | None]:
-    """Extract options for specified option type from all options.
-
-    :param option_type: the object of specified type of options
-    :param from_options: all options dictionary
-    :return: the dictionary of options for specified type, each option can be filled by value from all options
-             dictionary or blank in case the option for specified type is not exist in all options dictionary
-    """
-    _options: dict[str, str | int | bool | None] = {}
-
-    for key in option_type.keys:
-        key_with_prefix = f"{option_type.prefix}{key}"
-        if key not in from_options and key_with_prefix not in from_options:
-            _options[key] = ""
-        elif key in from_options:
-            _options[key] = from_options.get(key)
-        else:
-            _options[key] = from_options.get(key_with_prefix)
-
-    return _options
+DEFAULT_ROOT = "/"
 
 
 async def _iter_content(
-    response: aiohttp.ClientResponse, chunk_size: int
+    response: ClientResponse, chunk_size: int
 ) -> AsyncIterable[bytes]:
     """Async generator to iterate over response content by chunks."""
     while chunk := await response.content.read(chunk_size):
         yield chunk
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ClientOptions:
+    """Client options for WebDAV client."""
+
+    send_speed: int | None = None
+    recv_speed: int | None = None
+    session: ClientSession | None = None
+    timeout: ClientTimeout | None = DEFAULT_TIMEOUT
+    verify_ssl: bool = True
+    root: str = "/"
+    chunk_size: int = 65536
+    disable_check: bool = False
+    token: str | None = None
+    proxy: str | None = None
+    proxy_auth: BasicAuth | None = None
+
+
 class Client:
     """The client for WebDAV servers provides an ability to control files on remote WebDAV server."""
-
-    # path to root directory of WebDAV
-    root = "/"
-
-    # controls whether to verify the server's TLS certificate or not
-    verify = True
 
     # HTTP headers for different actions
     default_http_header: ClassVar[dict[str, list[str]]] = {
@@ -132,42 +127,30 @@ class Client:
 
     def __init__(
         self,
-        options: dict[str, str | int | bool],
+        url: str,
+        username: str,
+        password: str,
         *,
-        session: ClientSession | None = None,
+        options: ClientOptions | None = None,
     ) -> None:
         """Construct a WebDAV client.
 
-        :param options: the dictionary of connection options to WebDAV.
-            WebDev settings:
-            `webdav_hostname`: url for WebDAV server should contain protocol and ip address or domain name.
-                               Example: `https://webdav.server.com`.
-            `webdav_login`: (optional) Login name for WebDAV server. Can be empty when using token auth.
-            `webdav_password`: (optional) Password for WebDAV server. Can be empty when using token auth.
-            `webdav_token': (optional) Authentication token for WebDAV server.
-                            Can be empty when using login/password auth.
-            `webdav_root`: (optional) Root directory of WebDAV server. Default is `/`.
-            `webdav_cert_path`: (optional) Path to client certificate.
-            `webdav_key_path`: (optional) Path to private key of the client certificate.
-            `webdav_recv_speed`: (optional) Rate limit of data download speed in Bytes per second.
-                                 Defaults to unlimited speed.
-            `webdav_send_speed`: (optional) Rate limit of data upload speed in Bytes per second.
-                                 Defaults to unlimited speed.
-            `webdav_timeout`: (optional) Timeout in seconds used in HTTP connection managed by requests.
-                                Defaults to 30 seconds.
-            `webdav_verbose`: (optional) Set verbose mode on/off. By default verbose mode is off.
-        :param session: (optional) the aiohttp session object.
+        :param url: the URL of the WebDAV server.
+        :param username: the username for the WebDAV server.
+        :param password: the password for the WebDAV server.
+        :param options: the options for the WebDAV client.
         """
-        self.session = session if session else aiohttp.ClientSession()
-        self._close_session = not bool(session)
+        self._url = url
+        self._username = username
+        self._password = password
+        self._options = options or ClientOptions()
+
+        self._session = (
+            self._options.session if self._options.session else ClientSession()
+        )
+        self._close_session = not bool(self._options.session)
         self.http_header = self.default_http_header.copy()
         self.requests = self.default_requests.copy()
-        webdav_options = get_options(option_type=WebDAVSettings, from_options=options)
-
-        self.webdav = WebDAVSettings(webdav_options)
-        self.requests.update(self.webdav.override_methods)
-        self.timeout = self.webdav.timeout
-        self.chunk_size = 65536
 
     def get_headers(
         self, action: str, headers_ext: list[str] | None = None
@@ -190,8 +173,8 @@ class Client:
         if headers_ext:
             headers.extend(headers_ext)
 
-        if self.webdav.token:
-            webdav_token = f"Authorization: Bearer {self.webdav.token}"
+        if self._options.token:
+            webdav_token = f"Authorization: Bearer {self._options.token}"
             headers.append(webdav_token)
 
         return dict([i.split(":", 1) for i in headers])
@@ -202,8 +185,9 @@ class Client:
         :param path: uri path.
         :return: the url string.
         """
-        url = {"hostname": self.webdav.hostname, "root": self.webdav.root, "path": path}
-        return "{hostname}{root}{path}".format(**url)
+        path = path.lstrip(Urn.separate)
+        root = self._options.root.lstrip(Urn.separate)
+        return str(yarl.URL(self._url).joinpath(root, path))
 
     def get_full_path(self, urn: Urn) -> str:
         """Generate full path to remote resource exclude hostname.
@@ -211,7 +195,7 @@ class Client:
         :param urn: the URN to resource.
         :return: full path to resource with root path.
         """
-        return f"{unquote(self.webdav.root)}{urn.path()}"
+        return f"{unquote(self._options.root)}{urn.path()}"
 
     async def execute_request(
         self,
@@ -225,7 +209,7 @@ class Client:
         | str
         | None = None,
         headers_ext: list[str] | None = None,
-    ) -> aiohttp.ClientResponse:
+    ) -> ClientResponse:
         """Generate request to WebDAV server for specified action and path and execute it.
 
         :param action: the action for WebDAV server which should be executed.
@@ -237,23 +221,23 @@ class Client:
         :return: HTTP response of request.
         """
         try:
-            response = await self.session.request(
+            response = await self._session.request(
                 method=self.requests[action],
                 url=self.get_url(path),
-                auth=aiohttp.BasicAuth(self.webdav.login, self.webdav.password)
-                if (not self.webdav.token and not self.session.auth)
-                and (self.webdav.login and self.webdav.password)
+                auth=BasicAuth(self._username, self._password)
+                if (not self._options.token and not self._session.auth)
+                and (self._username and self._password)
                 else None,
                 headers=self.get_headers(action, headers_ext),
-                timeout=self.timeout,
-                ssl=self.webdav.ssl if self.verify else False,
+                timeout=self._options.timeout,
+                ssl=self._options.verify_ssl,
                 data=data,
-                proxy=self.webdav.proxy,
-                proxy_auth=self.webdav.proxy_auth,
+                proxy=self._options.proxy,
+                proxy_auth=self._options.proxy_auth,
             )
-        except aiohttp.ClientConnectionError as err:
-            raise NoConnectionError(self.webdav.hostname) from err
-        except aiohttp.ClientResponseError as re:
+        except ClientConnectionError as err:
+            raise NoConnectionError(self._url) from err
+        except ClientResponseError as re:
             raise ConnectionExceptionError(re) from re
 
         if response.status == 507:
@@ -263,7 +247,7 @@ class Client:
         if response.status == 423:
             raise ResourceLockedError(path=path)
         if response.status == 405:
-            raise MethodNotSupportedError(name=action, server=self.webdav.hostname)
+            raise MethodNotSupportedError(name=action, server=self._url)
         if response.status >= 400:
             raise ResponseErrorCodeError(
                 url=self.get_url(path),
@@ -273,16 +257,9 @@ class Client:
 
         return response
 
-    def valid(self) -> bool:
-        """Validate of WebDAV settings.
-
-        :return: True in case settings are valid and False otherwise.
-        """
-        return bool(self.webdav.valid())
-
     async def list_files(
         self,
-        remote_path: str = root,
+        remote_path: str = DEFAULT_ROOT,
         *,
         recursive: bool = False,
     ) -> list[str]:
@@ -308,7 +285,7 @@ class Client:
         if recursive is True:
             headers = ["Depth:infinity"]
         directory_urn = Urn(remote_path, directory=True)
-        if directory_urn.path() != Client.root and not await self.check(
+        if directory_urn.path() != DEFAULT_ROOT and not await self.check(
             directory_urn.path()
         ):
             raise RemoteResourceNotFoundError(directory_urn.path())
@@ -326,7 +303,7 @@ class Client:
         ]
 
     async def list_with_infos(
-        self, remote_path: str = root, *, recursive: bool = False
+        self, remote_path: str = DEFAULT_ROOT, *, recursive: bool = False
     ) -> list[dict[str, str | bool]]:
         """Return list of nested files and directories for remote WebDAV directory by path with additional information.
 
@@ -343,7 +320,7 @@ class Client:
         if recursive is True:
             headers = ["Depth:infinity"]
         directory_urn = Urn(remote_path, directory=True)
-        if directory_urn.path() != Client.root and not await self.check(
+        if directory_urn.path() != DEFAULT_ROOT and not await self.check(
             directory_urn.path()
         ):
             raise RemoteResourceNotFoundError(directory_urn.path())
@@ -369,10 +346,10 @@ class Client:
         data = WebDavXmlUtils.create_free_space_request_content()
         response = await self.execute_request(action="free", path="", data=data)
         return WebDavXmlUtils.parse_free_space_response(
-            await response.read(), self.webdav.hostname
+            await response.read(), self._url
         )
 
-    async def check(self, remote_path: str = root) -> bool:
+    async def check(self, remote_path: str = DEFAULT_ROOT) -> bool:
         """Check an existence of remote resource on WebDAV server by remote path.
 
         More information you can find by link https://www.rfc-editor.org/rfc/rfc4918.html#section-9.1.
@@ -380,7 +357,7 @@ class Client:
         :param remote_path: (optional) path to resource on WebDAV server. Defaults is root directory of WebDAV.
         :return: True if resource is exist or False otherwise
         """
-        if self.webdav.disable_check:
+        if self._options.disable_check:
             return True
 
         urn = Urn(remote_path)
@@ -429,7 +406,7 @@ class Client:
             raise RemoteResourceNotFoundError(urn.path())
 
         response = await self.execute_request(action="download", path=urn.quote())
-        return _iter_content(response, self.chunk_size)
+        return _iter_content(response, self._options.chunk_size)
 
     async def download_from(
         self,
@@ -465,11 +442,11 @@ class Client:
             if asyncio.iscoroutine(ret):
                 await ret
 
-        async for chunk in _iter_content(response, self.chunk_size):
+        async for chunk in _iter_content(response, self._options.chunk_size):
             write_ret = buff.write(chunk)
             if asyncio.iscoroutine(write_ret):
                 await write_ret
-            current += self.chunk_size
+            current += self._options.chunk_size
 
             if callable(progress):
                 ret = progress(current, total)
@@ -587,9 +564,9 @@ class Client:
                 if asyncio.iscoroutine(ret):
                     await ret
 
-            async for block in _iter_content(response, self.chunk_size):
+            async for block in _iter_content(response, self._options.chunk_size):
                 await local_file.write(block)
-                current += self.chunk_size
+                current += self._options.chunk_size
                 if callable(progress):
                     ret = progress(current, total)
                     if asyncio.iscoroutine(ret):
@@ -738,7 +715,7 @@ class Client:
                 current = 0
 
                 while current < total:
-                    data = await file_object.read(self.chunk_size)
+                    data = await file_object.read(self._options.chunk_size)
                     if callable(progress):
                         ret = progress(current, total)  # call to progress function
                         if asyncio.iscoroutine(ret):
@@ -842,7 +819,7 @@ class Client:
         response = await self.execute_request(action="info", path=urn.quote())
         path = self.get_full_path(urn)
         return WebDavXmlUtils.parse_info_response(
-            content=await response.read(), path=path, hostname=self.webdav.hostname
+            content=await response.read(), path=path, hostname=self._url
         )
 
     async def _check_remote_resource(self, remote_path: str, urn: Urn) -> None:
@@ -867,7 +844,7 @@ class Client:
         )
         path = self.get_full_path(urn)
         return WebDavXmlUtils.parse_is_dir_response(
-            content=await response.read(), path=path, hostname=self.webdav.hostname
+            content=await response.read(), path=path, hostname=self._url
         )
 
     async def get_property(
@@ -937,7 +914,9 @@ class Client:
         data = WebDavXmlUtils.create_set_property_batch_request_content(properties)
         await self.execute_request(action="set_property", path=urn.quote(), data=data)
 
-    async def lock(self, remote_path: str = root, timeout: int = 0) -> "LockClient":
+    async def lock(
+        self, remote_path: str = DEFAULT_ROOT, timeout: int = 0
+    ) -> "LockClient":
         """Create a lock on the given path and returns a LockClient that handles the lock.
 
         To ensure the lock is released this should be called using with `with client.lock("path") as c:`.
@@ -966,7 +945,12 @@ class Client:
         )
 
         return LockClient(
-            self, Urn(remote_path).quote(), response.headers["Lock-Token"]
+            url=self._url,
+            username=self._username,
+            password=self._password,
+            lock_path=Urn(remote_path).quote(),
+            lock_token=response.headers["Lock-Token"],
+            options=self._options,
         )
 
     def resource(self, remote_path: str) -> "Resource":
@@ -1141,7 +1125,7 @@ class Client:
     async def close(self) -> None:
         """Close the connection to WebDAV server."""
         if self._close_session:
-            await self.session.close()
+            await self._session.close()
 
     async def __aenter__(self) -> Self:
         """Async enter."""
@@ -1250,13 +1234,18 @@ class Resource:
 class LockClient(Client):
     """Client for handling locks on WebDAV server."""
 
-    def __init__(self, client: Client, lock_path: str, lock_token: str) -> None:
+    def __init__(
+        self,
+        *,
+        url: str,
+        username: str,
+        password: str,
+        lock_path: str,
+        lock_token: str,
+        options: ClientOptions | None = None,
+    ) -> None:
         """Client for handling locks on WebDAV server."""
-        super().__init__({})
-        self.session = client.session
-        self.webdav = client.webdav
-        self.requests = client.requests
-        self.timeout = self.webdav.timeout
+        super().__init__(url=url, username=username, password=password, options=options)
 
         self.__lock_path = lock_path
         self.__lock_token = lock_token

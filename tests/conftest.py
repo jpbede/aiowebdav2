@@ -7,6 +7,7 @@ from aioresponses import aioresponses
 import pytest
 
 from aiowebdav2 import Client
+from aiowebdav2.client import ClientOptions
 from tests import load_responses
 
 
@@ -33,15 +34,13 @@ def mock_responses(responses: aioresponses) -> None:
 @pytest.fixture(name="client")
 async def client() -> AsyncGenerator[Client, None]:
     """Return a aiowebdav2 client."""
-    webdav_options: dict[str, str | int | bool] = {
-        "webdav_hostname": "https://webdav.example.com",
-        "webdav_login": "user",
-        "webdav_password": "password",
-        "webdav_disable_check": True,
-    }
-
     async with (
         aiohttp.ClientSession() as session,
-        Client(webdav_options, session=session) as c,
+        Client(
+            url="https://webdav.example.com",
+            username="user",
+            password="password",
+            options=ClientOptions(session=session, disable_check=True),
+        ) as c,
     ):
         yield c
