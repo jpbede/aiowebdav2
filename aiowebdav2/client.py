@@ -36,6 +36,9 @@ from .urn import Urn
 
 log = logging.getLogger(__name__)
 
+CONST_ACCEPT_ALL = "Accept: */*"
+CONST_DEPTH_1 = "Depth: 1"
+
 
 def listdir(directory: Path) -> list[str]:
     """Return list of nested files and directories for local directory by path.
@@ -115,23 +118,23 @@ class Client:
     verify = True
 
     # HTTP headers for different actions
-    default_http_header: ClassVar[dict[str, list[str]]] = {
-        "list": ["Accept: */*", "Depth: 1"],
-        "free": ["Accept: */*", "Depth: 0", "Content-Type: text/xml"],
-        "copy": ["Accept: */*"],
-        "move": ["Accept: */*"],
-        "mkdir": ["Accept: */*", "Connection: Keep-Alive"],
-        "clean": ["Accept: */*", "Connection: Keep-Alive"],
-        "check": ["Accept: */*"],
-        "info": ["Accept: */*", "Depth: 1"],
+    efault_http_header: ClassVar[dict[str, list[str]]] = {
+        "list": [CONST_ACCEPT_ALL, CONST_DEPTH_1],
+        "free": [CONST_ACCEPT_ALL, "Depth: 0", "Content-Type: text/xml"],
+        "copy": [CONST_ACCEPT_ALL],
+        "move": [CONST_ACCEPT_ALL],
+        "mkdir": [CONST_ACCEPT_ALL, "Connection: Keep-Alive"],
+        "clean": [CONST_ACCEPT_ALL, "Connection: Keep-Alive"],
+        "check": [CONST_ACCEPT_ALL],
+        "info": [CONST_ACCEPT_ALL, CONST_DEPTH_1],
         "get_property": [
-            "Accept: */*",
-            "Depth: 1",
+            CONST_ACCEPT_ALL,
+            CONST_DEPTH_1,
             "Content-Type: application/x-www-form-urlencoded",
         ],
         "set_property": [
-            "Accept: */*",
-            "Depth: 1",
+            CONST_ACCEPT_ALL,
+            CONST_DEPTH_1,
             "Content-Type: application/x-www-form-urlencoded",
         ],
     }
