@@ -310,6 +310,20 @@ async def test_get_properties(client: Client, responses: aioresponses) -> None:
     ]
 
 
+async def test_client_with_internal_session() -> None:
+    """Test client with internal session."""
+    async with Client(
+        {
+            "webdav_hostname": "https://webdav.example.com",
+            "webdav_login": "user",
+            "webdav_password": "password",
+        }
+    ) as c:
+        assert c.session is not None
+
+    assert c.session.closed
+
+
 async def test_client_with_external_session() -> None:
     """Test client with external session."""
     external_session = aiohttp.ClientSession()
