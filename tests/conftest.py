@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator, Generator
 
+import aiohttp
 from aioresponses import aioresponses
 import pytest
 
@@ -26,6 +27,7 @@ async def client() -> AsyncGenerator[Client, None]:
     }
 
     async with (
-        Client(options) as c,
+        aiohttp.ClientSession() as session,
+        Client(options, session=session) as c,
     ):
         yield c
