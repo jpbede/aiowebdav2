@@ -14,20 +14,39 @@ from aiowebdav2.models import Property, PropertyRequest
 from . import load_responses
 
 
-async def test_list_files(client: Client, responses: aioresponses) -> None:
+async def test_list_files(client: Client) -> None:
     """Test list files."""
-    responses.add(
-        "https://webdav.example.com",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "1"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("get_list.xml"),
-    )
-
     files = await client.list_files()
     assert len(files) == 2
     assert files == ["test_dir/", "test.txt"]
+
+
+async def test_list_with_infos(client: Client) -> None:
+    """Test list with infos."""
+    files = await client.list_with_infos()
+    assert len(files) == 2
+    assert files == [
+        {
+            "content_type": "httpd/unix-directory",
+            "created": "2020-04-10T21:59:43Z",
+            "etag": '"1000-5a2f6d9cf8d39"',
+            "isdir": True,
+            "modified": "Fri, 10 Apr 2020 21:59:43 GMT",
+            "name": "None",
+            "path": "/test_dir/",
+            "size": "None",
+        },
+        {
+            "content_type": "text/plain",
+            "created": "2020-04-10T21:59:43Z",
+            "etag": '"29-5a2f6d9cf8d39"',
+            "isdir": False,
+            "modified": "Fri, 10 Apr 2020 21:59:43 GMT",
+            "name": "None",
+            "path": "/test_dir/test.txt",
+            "size": "41",
+        },
+    ]
 
 
 async def test_info(client: Client, responses: aioresponses) -> None:
@@ -85,6 +104,7 @@ async def test_get_property(client: Client, responses: aioresponses) -> None:
     prop = await client.get_property(
         "/test_dir/test.txt", PropertyRequest(namespace="test", name="aProperty")
     )
+    assert prop
     assert prop.value == "aValue"
 
 
@@ -134,6 +154,7 @@ async def test_mkdir(client: Client, responses: aioresponses) -> None:
 
 async def test_free(client: Client, responses: aioresponses) -> None:
     """Test free."""
+    responses.clear()
     responses.add(
         "https://webdav.example.com",
         "PROPFIND",
@@ -149,6 +170,7 @@ async def test_free(client: Client, responses: aioresponses) -> None:
 
 async def test_free_not_supported(client: Client, responses: aioresponses) -> None:
     """Test free not supported."""
+    responses.clear()
     responses.add(
         "https://webdav.example.com",
         "PROPFIND",

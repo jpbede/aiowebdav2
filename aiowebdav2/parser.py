@@ -14,7 +14,7 @@ class WebDavXmlUtils:
     """WebDAV XML utils."""
 
     @staticmethod
-    def parse_get_list_info_response(content: bytes) -> list[dict]:
+    def parse_get_list_info_response(content: bytes) -> list[dict[str, str | bool]]:
         """Parse of response content XML from WebDAV server and extract file and directory infos.
 
         :param content: the XML content of HTTP response from WebDAV server for getting list of files by remote path.
@@ -101,7 +101,7 @@ class WebDavXmlUtils:
             return None
 
     @staticmethod
-    def get_info_from_response(response: etree.Element) -> dict:
+    def get_info_from_response(response: etree.Element) -> dict[str, str | bool]:
         """Get information attributes from response.
 
         :param response: XML object of response for the remote resource defined by path
@@ -121,13 +121,15 @@ class WebDavXmlUtils:
             "etag": ".//{DAV:}getetag",
             "content_type": ".//{DAV:}getcontenttype",
         }
-        info = {}
+        info: dict[str, str | bool] = {}
         for name, value in find_attributes.items():
-            info[name] = response.findtext(value)
+            info[name] = str(response.findtext(value)).strip()
         return info
 
     @staticmethod
-    def parse_info_response(content: bytes, path: str, hostname: str) -> dict:
+    def parse_info_response(
+        content: bytes, path: str, hostname: str
+    ) -> dict[str, str | bool]:
         """Parse of response content XML from WebDAV server and extract an information about resource.
 
         :param content: the XML content of HTTP response from WebDAV server.
