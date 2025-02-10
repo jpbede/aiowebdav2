@@ -8,6 +8,7 @@ from aioresponses import CallbackResult, aioresponses
 import pytest
 
 from aiowebdav2 import Client
+from aiowebdav2.client import ClientOptions
 from aiowebdav2.exceptions import MethodNotSupportedError
 from aiowebdav2.models import Property, PropertyRequest
 
@@ -335,32 +336,28 @@ async def test_get_properties(client: Client, responses: aioresponses) -> None:
 async def test_client_with_internal_session() -> None:
     """Test client with internal session."""
     async with Client(
-        {
-            "webdav_hostname": "https://webdav.example.com",
-            "webdav_login": "user",
-            "webdav_password": "password",
-        }
+        url="https://webdav.example.com",
+        username="user",
+        password="password",
     ) as c:
-        assert c.session is not None
+        assert c._session is not None
 
-    assert c.session.closed
+    assert c._session.closed
 
 
 async def test_client_with_external_session() -> None:
     """Test client with external session."""
     external_session = aiohttp.ClientSession()
     async with Client(
-        {
-            "webdav_hostname": "https://webdav.example.com",
-            "webdav_login": "user",
-            "webdav_password": "password",
-        },
-        session=external_session,
+        url="https://webdav.example.com",
+        username="user",
+        password="password",
+        options=ClientOptions(session=external_session),
     ) as c:
-        assert c.session is not None
-        assert c.session is external_session
+        assert c._session is not None
+        assert c._session is external_session
 
-    assert not c.session.closed
+    assert not c._session.closed
 
     await external_session.close()
-    assert c.session.closed
+    assert c._session.closed

@@ -27,6 +27,7 @@ aiohttp = ">=3.8.0"
 aiofiles = ">=0.7.0"
 lxml = "^5.3.0"
 python-dateutil = "^2.9.0.post0"
+yarl = "^1.18.3"
 
 [tool.poetry.group.dev.dependencies]
 codespell = "2.4.1"
@@ -120,6 +121,7 @@ disable = [
   "too-many-public-methods",
   "too-few-public-methods",
   "wrong-import-order",
+  "protected-access"
 ]
 
 [tool.pylint.SIMILARITIES]
