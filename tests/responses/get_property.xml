@@ -6,6 +6,7 @@
             <d:status>HTTP/1.1 200 OK</d:status>
             <d:prop>
                 <aProperty xmlns="test">aValue</aProperty>
+                <anotherProperty xmlns="test2">anotherValue</anotherProperty>
             </d:prop>
         </d:propstat>
     </d:response>
