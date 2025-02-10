@@ -123,7 +123,7 @@ disable = [
 ignore-imports = true
 
 [tool.pylint.FORMAT]
-max-line-length = 100
+max-line-length = 120
 
 [tool.pytest.ini_options]
 addopts = "--cov"
