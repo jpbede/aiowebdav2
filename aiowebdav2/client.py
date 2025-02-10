@@ -94,8 +94,8 @@ def wrap_connection_error(fn: Callable) -> Callable:
             raise NoConnectionError(self.webdav.hostname) from err
         except aiohttp.ClientResponseError as re:
             raise ConnectionExceptionError(re) from re
-        else:
-            return res
+
+        return res
 
     return _wrapper
 
@@ -590,7 +590,7 @@ class Client:
             raise OptionNotValidError(name="remote_path", value=remote_path)
 
         if local_path.is_dir():
-            raise OptionNotValidError(name="local_path", value=local_path.__str__())
+            raise OptionNotValidError(name="local_path", value=str(local_path))
 
         if not await self.check(urn.path()):
             raise RemoteResourceNotFoundError(urn.path())
@@ -714,10 +714,10 @@ class Client:
             raise OptionNotValidError(name="remote_path", value=remote_path)
 
         if not local_path.is_dir():
-            raise OptionNotValidError(name="local_path", value=local_path.__str__())
+            raise OptionNotValidError(name="local_path", value=str(local_path))
 
         if not local_path.exists():
-            raise LocalResourceNotFoundError(local_path.__str__())
+            raise LocalResourceNotFoundError(str(local_path))
 
         await self.mkdir(remote_path)
 
@@ -757,14 +757,14 @@ class Client:
         :param force:  if the directory isn't there it will creat the directory.
         """
         if not local_path.exists():
-            raise LocalResourceNotFoundError(local_path.__str__())
+            raise LocalResourceNotFoundError(str(local_path))
 
         urn = Urn(remote_path)
         if urn.is_dir():
             raise OptionNotValidError(name="remote_path", value=remote_path)
 
         if local_path.is_dir():
-            raise OptionNotValidError(name="local_path", value=local_path.__str__())
+            raise OptionNotValidError(name="local_path", value=str(local_path))
 
         if not await self.check(urn.parent()):
             if force is True:
@@ -852,7 +852,7 @@ class Client:
             raise RemoteParentNotFoundError(urn_to.path())
 
         header_destination = f"Destination: {self.get_url(urn_to.quote())}"
-        header_overwrite = "Overwrite: {flag}".format(flag="T" if overwrite else "F")
+        header_overwrite = f"Overwrite: {'T' if overwrite else 'F'}"
         await self.execute_request(
             action="move",
             path=urn_from.quote(),
@@ -1052,7 +1052,7 @@ class Client:
         self._validate_local_directory(local_directory)
 
         paths = await self.list_files(urn.path())
-        expression = "{begin}{end}".format(begin="^", end=urn.path())
+        expression = f"^{urn.path()}"
         remote_resource_names = prune(paths, expression)
 
         for local_resource_name in listdir(local_directory):
@@ -1095,7 +1095,7 @@ class Client:
         local_resource_names = listdir(local_directory)
 
         paths = await self.list_files(urn.path())
-        expression = "{begin}{end}".format(begin="^", end=remote_directory)
+        expression = f"^{remote_directory}"
         remote_resource_names = prune(paths, expression)
 
         for remote_resource_name in remote_resource_names:
@@ -1145,8 +1145,8 @@ class Client:
             # If there is problem when parsing dates, or cannot get
             # last modified information, return None
             return None
-        else:
-            return local_last_mod_date_unix_ts > remote_last_mod_date_unix_ts
+
+        return local_last_mod_date_unix_ts > remote_last_mod_date_unix_ts
 
     async def sync(self, remote_directory: str, local_directory: Path) -> None:
         """Synchronize local and remote directories.
@@ -1184,12 +1184,10 @@ class Client:
     def _validate_local_directory(local_directory: Path) -> None:
         """Validate local directory."""
         if not local_directory.is_dir():
-            raise OptionNotValidError(
-                name="local_path", value=local_directory.__str__()
-            )
+            raise OptionNotValidError(name="local_path", value=str(local_directory))
 
         if not local_directory.exists():
-            raise LocalResourceNotFoundError(local_directory.__str__())
+            raise LocalResourceNotFoundError(str(local_directory))
 
     async def close(self) -> None:
         """Close the connection to WebDAV server."""

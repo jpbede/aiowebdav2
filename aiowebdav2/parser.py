@@ -43,8 +43,8 @@ class WebDavXmlUtils:
                 infos.append(info)
         except etree.XMLSyntaxError:
             return []
-        else:
-            return infos
+
+        return infos
 
     @staticmethod
     def parse_get_list_response(content: bytes) -> list[Urn]:
@@ -65,8 +65,8 @@ class WebDavXmlUtils:
                 urns.append(Urn(href, directory=is_dir))
         except etree.XMLSyntaxError:
             return []
-        else:
-            return urns
+
+        return urns
 
     @staticmethod
     def create_free_space_request_content() -> bytes:

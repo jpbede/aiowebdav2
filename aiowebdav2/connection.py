@@ -26,8 +26,8 @@ class ConnectionSettings:
             self.is_valid()
         except OptionNotValidError:
             return False
-        else:
-            return True
+
+        return True
 
 
 class WebDAVSettings(ConnectionSettings):
