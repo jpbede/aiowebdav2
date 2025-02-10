@@ -274,11 +274,9 @@ class WebDavXmlUtils:
 
             for resp in responses:
                 href = resp.findtext("{DAV:}href")
-
-                if Urn.compare_path(n_path, href) is True:
-                    return resp
-                href_without_prefix = href.removeprefix(prefix)
-                if Urn.compare_path(n_path, href_without_prefix) is True:
+                if Urn.compare_path(n_path, href) or Urn.compare_path(
+                    n_path, href.removeprefix(prefix)
+                ):
                     return resp
             raise RemoteResourceNotFoundError(path)
         except etree.XMLSyntaxError as err:
