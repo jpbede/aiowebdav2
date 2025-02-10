@@ -34,6 +34,7 @@ from .exceptions import (
     RemoteResourceNotFoundError,
     ResourceLockedError,
     ResponseErrorCodeError,
+    UnauthorizedError,
 )
 from .models import Property, PropertyRequest
 from .parser import WebDavXmlUtils
@@ -240,6 +241,8 @@ class Client:
         except ClientResponseError as re:
             raise ConnectionExceptionError(re) from re
 
+        if response.status == 401:
+            raise UnauthorizedError(self._url)
         if response.status == 507:
             raise NotEnoughSpaceError
         if response.status == 404:

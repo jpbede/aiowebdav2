@@ -156,3 +156,15 @@ class ResourceLockedError(WebDavError):
     def __str__(self) -> str:
         """Return string representation of exception."""
         return f"Resource {self.path} locked"
+
+
+class UnauthorizedError(WebDavError):
+    """Exception for unauthorized user."""
+
+    def __init__(self, path: str) -> None:
+        """Exception for unauthorized user."""
+        self.path = path
+
+    def __str__(self) -> str:
+        """Return string representation of exception."""
+        return f"Unauthorized access to {self.path}"
