@@ -1,7 +1,7 @@
 """WebDAV client implementation."""
 
 import asyncio
-from collections.abc import AsyncIterable, Awaitable, Callable, Coroutine
+from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 import logging
 from pathlib import Path
@@ -50,7 +50,7 @@ DEFAULT_ROOT = "/"
 
 async def _iter_content(
     response: ClientResponse, chunk_size: int
-) -> AsyncIterable[bytes]:
+) -> AsyncIterator[bytes]:
     """Async generator to iterate over response content by chunks."""
     while chunk := await response.content.read(chunk_size):
         yield chunk
@@ -314,7 +314,7 @@ class Client:
 
     async def list_with_infos(
         self, remote_path: str = DEFAULT_ROOT, *, recursive: bool = False
-    ) -> list[dict[str, str | bool]]:
+    ) -> list[dict[str, str]]:
         """Return list of nested files and directories for remote WebDAV directory by path with additional information.
 
         More information you can find by link https://www.rfc-editor.org/rfc/rfc4918.html#section-9.1.
@@ -403,7 +403,7 @@ class Client:
             return True
         return response.status in (200, 201)
 
-    async def download_iter(self, remote_path: str) -> AsyncIterable[bytes]:
+    async def download_iter(self, remote_path: str) -> AsyncIterator[bytes]:
         """Download file from WebDAV and return content in generator.
 
         :param remote_path: path to file on WebDAV server.
@@ -584,7 +584,7 @@ class Client:
 
     async def upload_iter(
         self,
-        buff: IO[bytes] | AsyncIterable[bytes] | AsyncWriteBuffer,
+        buff: str | IO[bytes] | AsyncIterator[bytes] | AsyncWriteBuffer,
         remote_path: str,
     ) -> None:
         """Upload file from buffer to remote path on WebDAV server.
@@ -809,7 +809,7 @@ class Client:
         urn = Urn(remote_path)
         await self.execute_request(action="clean", path=urn.quote())
 
-    async def info(self, remote_path: str) -> dict[str, str | bool]:
+    async def info(self, remote_path: str) -> dict[str, str]:
         """Get information about resource on WebDAV.
 
         More information you can find by link https://www.rfc-editor.org/rfc/rfc4918.html#section-9.1.
@@ -1188,7 +1188,7 @@ class Resource:
         )
         return Resource(self.client, urn)
 
-    async def info(self, params: dict[str, str] | None = None) -> dict[str, str | bool]:
+    async def info(self, params: dict[str, str] | None = None) -> dict[str, str]:
         """Get information about resource on WebDAV."""
         info = await self.client.info(self.urn.path())
         if not params:
