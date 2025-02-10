@@ -118,7 +118,7 @@ class Client:
     verify = True
 
     # HTTP headers for different actions
-    efault_http_header: ClassVar[dict[str, list[str]]] = {
+    default_http_header: ClassVar[dict[str, list[str]]] = {
         "list": [CONST_ACCEPT_ALL, CONST_DEPTH_1],
         "free": [CONST_ACCEPT_ALL, "Depth: 0", "Content-Type: text/xml"],
         "copy": [CONST_ACCEPT_ALL],
