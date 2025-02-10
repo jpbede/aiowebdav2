@@ -14,7 +14,7 @@ class WebDavXmlUtils:
     """WebDAV XML utils."""
 
     @staticmethod
-    def parse_get_list_info_response(content: bytes) -> list[dict[str, str | bool]]:
+    def parse_get_list_info_response(content: bytes) -> list[dict[str, str]]:
         """Parse of response content XML from WebDAV server and extract file and directory infos.
 
         :param content: the XML content of HTTP response from WebDAV server for getting list of files by remote path.
@@ -38,7 +38,7 @@ class WebDavXmlUtils:
                 path = unquote(urlsplit(href_el.text).path)
                 is_dir = len(response.findall(".//{DAV:}collection")) > 0
                 info = WebDavXmlUtils.get_info_from_response(response)
-                info["isdir"] = is_dir
+                info["isdir"] = str(is_dir)
                 info["path"] = path
                 infos.append(info)
         except etree.XMLSyntaxError:
@@ -101,7 +101,7 @@ class WebDavXmlUtils:
             return None
 
     @staticmethod
-    def get_info_from_response(response: etree.Element) -> dict[str, str | bool]:
+    def get_info_from_response(response: etree.Element) -> dict[str, str]:
         """Get information attributes from response.
 
         :param response: XML object of response for the remote resource defined by path
@@ -121,15 +121,13 @@ class WebDavXmlUtils:
             "etag": ".//{DAV:}getetag",
             "content_type": ".//{DAV:}getcontenttype",
         }
-        info: dict[str, str | bool] = {}
+        info = {}
         for name, value in find_attributes.items():
             info[name] = str(response.findtext(value)).strip()
         return info
 
     @staticmethod
-    def parse_info_response(
-        content: bytes, path: str, hostname: str
-    ) -> dict[str, str | bool]:
+    def parse_info_response(content: bytes, path: str, hostname: str) -> dict[str, str]:
         """Parse of response content XML from WebDAV server and extract an information about resource.
 
         :param content: the XML content of HTTP response from WebDAV server.
