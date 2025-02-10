@@ -3,6 +3,7 @@
 from collections.abc import AsyncGenerator
 from typing import Any
 
+import aiohttp
 from aioresponses import CallbackResult, aioresponses
 import pytest
 
@@ -307,3 +308,37 @@ async def test_get_properties(client: Client, responses: aioresponses) -> None:
             value="anotherValue",
         ),
     ]
+
+
+async def test_client_with_internal_session() -> None:
+    """Test client with internal session."""
+    async with Client(
+        {
+            "webdav_hostname": "https://webdav.example.com",
+            "webdav_login": "user",
+            "webdav_password": "password",
+        }
+    ) as c:
+        assert c.session is not None
+
+    assert c.session.closed
+
+
+async def test_client_with_external_session() -> None:
+    """Test client with external session."""
+    external_session = aiohttp.ClientSession()
+    async with Client(
+        {
+            "webdav_hostname": "https://webdav.example.com",
+            "webdav_login": "user",
+            "webdav_password": "password",
+        },
+        session=external_session,
+    ) as c:
+        assert c.session is not None
+        assert c.session is external_session
+
+    assert not c.session.closed
+
+    await external_session.close()
+    assert c.session.closed

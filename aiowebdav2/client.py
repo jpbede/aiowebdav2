@@ -14,6 +14,7 @@ from urllib.parse import unquote
 
 import aiofiles
 import aiohttp
+from aiohttp import ClientSession
 
 from .connection import WebDAVSettings
 from .exceptions import (
@@ -161,7 +162,9 @@ class Client:
         "https://webdav.yandex.ru": "urn:yandex:disk:meta",
     }
 
-    def __init__(self, options: dict) -> None:
+    _close_session: bool = False
+
+    def __init__(self, options: dict, *, session: ClientSession | None = None) -> None:
         """Construct a WebDAV client.
 
         :param options: the dictionary of connection options to WebDAV.
@@ -182,9 +185,10 @@ class Client:
             `webdav_timeout`: (optional) Timeout in seconds used in HTTP connection managed by requests.
                                 Defaults to 30 seconds.
             `webdav_verbose`: (optional) Set verbose mode on/off. By default verbose mode is off.
-
+        :param session: (optional) the aiohttp session object.
         """
-        self.session = aiohttp.ClientSession()
+        self.session = session if session else aiohttp.ClientSession()
+        self._close_session = not bool(session)
         self.http_header = self.default_http_header.copy()
         self.requests = self.default_requests.copy()
         webdav_options = get_options(option_type=WebDAVSettings, from_options=options)
@@ -1186,7 +1190,8 @@ class Client:
 
     async def close(self) -> None:
         """Close the connection to WebDAV server."""
-        await self.session.close()
+        if self._close_session:
+            await self.session.close()
 
     async def __aenter__(self) -> Self:
         """Async enter."""
