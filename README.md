@@ -53,7 +53,7 @@ For authentication in WebDAV server use `webdav_login`, `webdav_password`.
 For an anonymous login do not specify auth properties.
 
 ```python
-from aiowebdav.client import Client
+from aiowebdav2.client import Client
 
 options = {
  'webdav_hostname': "https://webdav.server.ru",
@@ -68,7 +68,7 @@ The key should be in the following list: `check`, `free`, `info`, `list`, `mkdir
  `publish` and `unpublish`. The value should a string name of WebDAV method, for example `GET`.
 
 ```python
-from aiowebdav.client import Client
+from aiowebdav2.client import Client
 
 options = {
  'webdav_hostname': "https://webdav.server.ru",
@@ -85,7 +85,7 @@ client = Client(options)
 For configuring a requests timeout you can use an option `webdav_timeout` with int value in seconds, by default the timeout is set to 30 seconds.
 
 ```python
-from aiowebdav.client import Client
+from aiowebdav2.client import Client
 
 options = {
  'webdav_hostname': "https://webdav.server.ru",
@@ -99,7 +99,7 @@ client = Client(options)
 When a proxy server you need to specify settings to connect through it.
 
 ```python
-from aiowebdav.client import Client
+from aiowebdav2.client import Client
 
 options = {
  'webdav_hostname': "https://webdav.server.ru",
@@ -114,7 +114,7 @@ client = Client(options)
 If you want to use the certificate path to certificate and private key is defined as follows:
 
 ```python
-from aiowebdav.client import Client
+from aiowebdav2.client import Client
 
 options = {
  'webdav_hostname': "https://webdav.server.ru",

@@ -26,6 +26,7 @@ python = "^3.11"
 aiohttp = ">=3.8.0"
 aiofiles = ">=0.7.0"
 lxml = "^5.3.0"
+python-dateutil = "^2.9.0.post0"
 
 [tool.poetry.group.dev.dependencies]
 codespell = "2.4.1"
@@ -42,6 +43,8 @@ ruff = "0.9.5"
 syrupy = "4.8.1"
 yamllint = "1.35.1"
 aioresponses = "0.7.8"
+types-aiofiles = "^24.1.0.20241221"
+types-python-dateutil = "^2.9.0.20241206"
 
 [tool.poetry.urls]
 "Bug Tracker" = "https://github.com/jpbede/aiowebdav2/issues"
