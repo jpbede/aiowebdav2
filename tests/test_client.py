@@ -8,6 +8,7 @@ import pytest
 
 from aiowebdav2 import Client
 from aiowebdav2.exceptions import MethodNotSupportedError
+from aiowebdav2.models import Property, PropertyRequest
 
 from . import load_responses
 
@@ -81,9 +82,9 @@ async def test_get_property(client: Client, responses: aioresponses) -> None:
     )
 
     prop = await client.get_property(
-        "/test_dir/test.txt", {"namespace": "test", "name": "aProperty"}
+        "/test_dir/test.txt", PropertyRequest(namespace="test", name="aProperty")
     )
-    assert prop == "aValue"
+    assert prop.value == "aValue"
 
 
 async def test_set_property(client: Client, responses: aioresponses) -> None:
@@ -114,7 +115,7 @@ async def test_set_property(client: Client, responses: aioresponses) -> None:
 
     await client.set_property(
         "/test_dir/test.txt",
-        {"namespace": "test", "name": "aProperty", "value": "aValue"},
+        Property(namespace="test", name="aProperty", value="aValue"),
     )
 
 
@@ -274,3 +275,35 @@ async def test_is_dir_not_supported(client: Client, responses: aioresponses) -> 
 
     with pytest.raises(MethodNotSupportedError):
         await client.is_dir("/test_dir/")
+
+
+async def test_get_properties(client: Client, responses: aioresponses) -> None:
+    """Test get properties."""
+    responses.add(
+        "https://webdav.example.com/test_dir/test.txt",
+        "PROPFIND",
+        headers={"Accept": "*/*", "Depth": "0"},
+        content_type="application/xml",
+        status=200,
+        body=load_responses("get_property.xml"),
+    )
+
+    props = await client.get_properties(
+        "/test_dir/test.txt",
+        [
+            PropertyRequest(namespace="test", name="aProperty"),
+            PropertyRequest(namespace="test2", name="anotherProperty"),
+        ],
+    )
+    assert props == [
+        Property(
+            name="aProperty",
+            namespace="test",
+            value="aValue",
+        ),
+        Property(
+            name="anotherProperty",
+            namespace="test2",
+            value="anotherValue",
+        ),
+    ]

@@ -12,3 +12,4 @@ build
 /aarontest
 node_modules
 .coverage
+demo.py
