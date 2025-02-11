@@ -210,6 +210,8 @@ class Client:
         | str
         | None = None,
         headers_ext: list[str] | None = None,
+        *,
+        timeout: ClientTimeout | None = None,
     ) -> ClientResponse:
         """Generate request to WebDAV server for specified action and path and execute it.
 
@@ -219,6 +221,7 @@ class Client:
                      or file-like object to send in the body of the :class:`Request`.
         :param headers_ext: (optional) the addition headers list witch should be added to basic HTTP headers for
                             the specified action.
+        :param timeout: (optional) the timeout for the request.
         :return: HTTP response of request.
         """
         url = self.get_url(path)
@@ -235,7 +238,7 @@ class Client:
                 and (self._username and self._password)
                 else None,
                 headers=self.get_headers(action, headers_ext),
-                timeout=self._options.timeout,
+                timeout=timeout or self._options.timeout,
                 ssl=self._options.verify_ssl,
                 data=data,
                 proxy=self._options.proxy,
@@ -403,10 +406,13 @@ class Client:
             return True
         return response.status in (200, 201)
 
-    async def download_iter(self, remote_path: str) -> AsyncIterator[bytes]:
+    async def download_iter(
+        self, remote_path: str, *, timeout: ClientTimeout | None = None
+    ) -> AsyncIterator[bytes]:
         """Download file from WebDAV and return content in generator.
 
         :param remote_path: path to file on WebDAV server.
+        :param timeout: (optional) the timeout for the request.
         """
         urn = Urn(remote_path)
         if await self.is_dir(urn.path()):
@@ -415,7 +421,9 @@ class Client:
         if not await self.check(urn.path()):
             raise RemoteResourceNotFoundError(urn.path())
 
-        response = await self.execute_request(action="download", path=urn.quote())
+        response = await self.execute_request(
+            action="download", path=urn.quote(), timeout=timeout
+        )
         return _iter_content(response, self._options.chunk_size)
 
     async def download_from(
@@ -586,6 +594,8 @@ class Client:
         self,
         buff: str | IO[bytes] | AsyncIterator[bytes] | AsyncWriteBuffer,
         remote_path: str,
+        *,
+        timeout: ClientTimeout | None = None,
     ) -> None:
         """Upload file from buffer to remote path on WebDAV server.
 
@@ -593,6 +603,7 @@ class Client:
 
         :param buff: the buffer with content for file.
         :param str remote_path: the path to save file remotely on WebDAV server.
+        :param timeout: (optional) the timeout for the request.
         """
         urn = Urn(remote_path)
         if urn.is_dir():
@@ -601,7 +612,9 @@ class Client:
         if not await self.check(urn.parent()):
             raise RemoteParentNotFoundError(urn.path())
 
-        await self.execute_request(action="upload", path=urn.quote(), data=buff)
+        await self.execute_request(
+            action="upload", path=urn.quote(), data=buff, timeout=timeout
+        )
 
     async def upload(
         self,
