@@ -45,6 +45,7 @@ _LOGGER = logging.getLogger(__name__)
 
 CONST_ACCEPT_ALL = "Accept: */*"
 CONST_DEPTH_1 = "Depth: 1"
+CONST_DEPTH_0 = "Depth: 0"
 DEFAULT_ROOT = "/"
 
 
@@ -79,7 +80,7 @@ class Client:
     # HTTP headers for different actions
     default_http_header: ClassVar[dict[str, list[str]]] = {
         "list": [CONST_ACCEPT_ALL, CONST_DEPTH_1],
-        "free": [CONST_ACCEPT_ALL, "Depth: 0", "Content-Type: text/xml"],
+        "free": [CONST_ACCEPT_ALL, CONST_DEPTH_0, "Content-Type: text/xml"],
         "copy": [CONST_ACCEPT_ALL],
         "move": [CONST_ACCEPT_ALL],
         "mkdir": [CONST_ACCEPT_ALL, "Connection: Keep-Alive"],
@@ -88,12 +89,12 @@ class Client:
         "info": [CONST_ACCEPT_ALL, CONST_DEPTH_1],
         "get_property": [
             CONST_ACCEPT_ALL,
-            CONST_DEPTH_1,
+            CONST_DEPTH_0,
             "Content-Type: application/x-www-form-urlencoded",
         ],
         "set_property": [
             CONST_ACCEPT_ALL,
-            CONST_DEPTH_1,
+            CONST_DEPTH_0,
             "Content-Type: application/x-www-form-urlencoded",
         ],
     }

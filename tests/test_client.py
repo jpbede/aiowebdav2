@@ -118,7 +118,7 @@ async def test_set_property(client: Client, responses: aioresponses) -> None:
             == "application/x-www-form-urlencoded"
         )
         assert kwargs["headers"]["Accept"].strip() == "*/*"
-        assert kwargs["headers"]["Depth"].strip() == "1"
+        assert kwargs["headers"]["Depth"].strip() == "0"
         assert kwargs["data"] == (
             b"<?xml version='1.0' encoding='UTF-8'?>\n"
             b'<propertyupdate xmlns="DAV:"><set><prop>'
