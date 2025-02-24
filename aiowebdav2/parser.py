@@ -47,6 +47,27 @@ class WebDavXmlUtils:
         return infos
 
     @staticmethod
+    def parse_get_list_property_response(
+        content: bytes, properties: list[PropertyRequest]
+    ) -> dict[str, list[Property]]:
+        """Parse of response content XML from WebDAV server and extract file and directory properties."""
+        try:
+            tree = etree.fromstring(content)
+            properties_dict = {}
+            for response in tree.findall(".//{DAV:}response"):
+                href_el = next(iter(response.findall(".//{DAV:}href")), None)
+                if href_el is None:
+                    continue
+                path = unquote(urlsplit(href_el.text).path)
+                properties_dict[path] = WebDavXmlUtils.parse_get_properties_response(
+                    etree.tostring(response), properties
+                )
+        except etree.XMLSyntaxError:
+            return {}
+
+        return properties_dict
+
+    @staticmethod
     def parse_get_list_response(content: bytes) -> list[Urn]:
         """Parse of response content XML from WebDAV server and extract file and directory names.
 

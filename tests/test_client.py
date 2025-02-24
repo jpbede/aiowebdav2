@@ -50,6 +50,52 @@ async def test_list_with_infos(client: Client) -> None:
     ]
 
 
+async def test_with_properties(client: Client, responses: aioresponses) -> None:
+    """Test list with properties."""
+    responses.clear()
+    responses.add(
+        "https://webdav.example.com/",
+        "PROPFIND",
+        headers={"Accept": "*/*", "Depth": "0"},
+        content_type="application/xml",
+        status=207,
+        body=load_responses("list_with_properties.xml"),
+    )
+
+    props = await client.list_with_properties(
+        properties=[
+            PropertyRequest(namespace="test", name="aProperty"),
+            PropertyRequest(namespace="test2", name="anotherProperty"),
+        ],
+    )
+    assert props == {
+        "/test_dir/test.txt": [
+            Property(
+                name="aProperty",
+                namespace="test",
+                value="aValue",
+            ),
+            Property(
+                name="anotherProperty",
+                namespace="test2",
+                value="anotherValue",
+            ),
+        ],
+        "/test_dir/test2.txt": [
+            Property(
+                name="aProperty",
+                namespace="test",
+                value="aValue2",
+            ),
+            Property(
+                name="anotherProperty",
+                namespace="test2",
+                value="anotherValue2",
+            ),
+        ],
+    }
+
+
 async def test_info(client: Client, responses: aioresponses) -> None:
     """Test info."""
     responses.add(

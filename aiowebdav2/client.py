@@ -350,6 +350,32 @@ class Client:
             if Urn.compare_path(path, str(subfile.get("path", ""))) is False
         ]
 
+    async def list_with_properties(
+        self,
+        remote_path: str = DEFAULT_ROOT,
+        properties: list[PropertyRequest] | None = None,
+    ) -> dict[str, list[Property]]:
+        """Return list of nested files and directories for remote WebDAV directory by path with additional properties.
+
+        More information you can find by link https://www.rfc-editor.org/rfc/rfc4918.html
+        """
+        if properties is None:
+            properties = []
+
+        directory_urn = Urn(remote_path, directory=True)
+        if directory_urn.path() != DEFAULT_ROOT and not await self.check(
+            directory_urn.path()
+        ):
+            raise RemoteResourceNotFoundError(directory_urn.path())
+
+        data = WebDavXmlUtils.create_get_property_batch_request_content(properties)
+        response = await self.execute_request(
+            action="list", path=directory_urn.quote(), data=data
+        )
+        return WebDavXmlUtils.parse_get_list_property_response(
+            await response.read(), properties=properties
+        )
+
     async def free(self) -> int | None:
         """Return an amount of free space on remote WebDAV server.
 
