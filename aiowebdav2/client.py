@@ -373,7 +373,7 @@ class Client:
             action="list", path=directory_urn.quote(), data=data
         )
         return WebDavXmlUtils.parse_get_list_property_response(
-            await response.read(), properties=properties
+            await response.read(), properties=properties, hostname=self._url
         )
 
     async def free(self) -> int | None:
