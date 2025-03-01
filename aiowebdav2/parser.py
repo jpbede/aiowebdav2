@@ -48,7 +48,7 @@ class WebDavXmlUtils:
 
     @staticmethod
     def parse_get_list_property_response(
-        content: bytes, properties: list[PropertyRequest]
+        content: bytes, properties: list[PropertyRequest], hostname: str
     ) -> dict[str, list[Property]]:
         """Parse of response content XML from WebDAV server and extract file and directory properties."""
         try:
@@ -59,6 +59,8 @@ class WebDavXmlUtils:
                 if href_el is None:
                     continue
                 path = unquote(urlsplit(href_el.text).path)
+                prefix = urlparse(hostname).path
+                path = path.removeprefix(prefix)
                 properties_dict[path] = WebDavXmlUtils.parse_get_properties_response(
                     etree.tostring(response), properties
                 )
