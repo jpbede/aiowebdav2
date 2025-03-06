@@ -85,7 +85,7 @@ class Client:
         "move": [CONST_ACCEPT_ALL],
         "mkdir": [CONST_ACCEPT_ALL, "Connection: Keep-Alive"],
         "clean": [CONST_ACCEPT_ALL, "Connection: Keep-Alive"],
-        "check": [CONST_ACCEPT_ALL],
+        "check": [CONST_ACCEPT_ALL, CONST_DEPTH_0],
         "info": [CONST_ACCEPT_ALL, CONST_DEPTH_1],
         "get_property": [
             CONST_ACCEPT_ALL,
@@ -108,7 +108,7 @@ class Client:
         "move": "MOVE",
         "mkdir": "MKCOL",
         "clean": "DELETE",
-        "check": "HEAD",
+        "check": "PROPFIND",
         "list": "PROPFIND",
         "free": "PROPFIND",
         "info": "PROPFIND",
