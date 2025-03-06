@@ -244,7 +244,6 @@ class Client:
                 data=data,
                 proxy=self._options.proxy,
                 proxy_auth=self._options.proxy_auth,
-                chunked=True,
             )
         except ClientConnectionError as err:
             raise NoConnectionError(self._url) from err
