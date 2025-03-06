@@ -406,7 +406,7 @@ class Client:
         except RemoteResourceNotFoundError:
             return False
 
-        return int(response.status) == 200
+        return 200 <= int(response.status) < 300
 
     async def mkdir(self, remote_path: str, *, recursive: bool = False) -> bool:
         """Make new directory on WebDAV server.
