@@ -423,3 +423,26 @@ async def test_unauthorized(client: Client, responses: aioresponses) -> None:
         UnauthorizedError, match="Unauthorized access to https://webdav.example.com"
     ):
         await client.info("/test_dir/test.txt")
+
+
+async def test_upload_iter_content_length(
+    client: Client, responses: aioresponses
+) -> None:
+    """Test upload iter with content length."""
+
+    async def callback(_url: str, **kwargs: Any) -> CallbackResult:
+        assert kwargs["headers"]["Content-Length"].strip() == "12"
+        return CallbackResult(status=201)
+
+    responses.add(
+        "https://webdav.example.com/test_dir/test.txt",
+        "PUT",
+        headers={"Accept": "*/*"},
+        callback=callback,
+    )
+
+    async def stream() -> AsyncGenerator[bytes, None]:
+        yield b"Hello, "
+        yield b"world!"
+
+    await client.upload_iter(stream(), "/test_dir/test.txt", content_length=12)

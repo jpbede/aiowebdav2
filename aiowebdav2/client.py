@@ -623,6 +623,7 @@ class Client:
         remote_path: str,
         *,
         timeout: ClientTimeout | None = None,
+        content_length: int | None = None,
     ) -> None:
         """Upload file from buffer to remote path on WebDAV server.
 
@@ -631,6 +632,7 @@ class Client:
         :param buff: the buffer with content for file.
         :param str remote_path: the path to save file remotely on WebDAV server.
         :param timeout: (optional) the timeout for the request.
+        :param content_length: (optional) the length of content in buffer.
         """
         urn = Urn(remote_path)
         if urn.is_dir():
@@ -639,8 +641,16 @@ class Client:
         if not await self.check(urn.parent()):
             raise RemoteParentNotFoundError(urn.path())
 
+        headers = []
+        if content_length is not None:
+            headers.append(f"Content-Length: {content_length}")
+
         await self.execute_request(
-            action="upload", path=urn.quote(), data=buff, timeout=timeout
+            action="upload",
+            path=urn.quote(),
+            data=buff,
+            timeout=timeout,
+            headers_ext=headers,
         )
 
     async def upload(
