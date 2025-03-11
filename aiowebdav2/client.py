@@ -306,7 +306,7 @@ class Client:
 
         path = Urn.normalize_path(self.get_full_path(directory_urn))
         response = await self.execute_request(
-            action="list", path=directory_urn.quote(), headers_ext=headers
+            action="list", path=directory_urn.path(), headers_ext=headers
         )
         urns = WebDavXmlUtils.parse_get_list_response(await response.read())
 
@@ -341,7 +341,7 @@ class Client:
 
         path = Urn.normalize_path(self.get_full_path(directory_urn))
         response = await self.execute_request(
-            action="list", path=directory_urn.quote(), headers_ext=headers
+            action="list", path=directory_urn.path(), headers_ext=headers
         )
         subfiles = WebDavXmlUtils.parse_get_list_info_response(await response.read())
         return [
@@ -370,7 +370,7 @@ class Client:
 
         data = WebDavXmlUtils.create_get_property_batch_request_content(properties)
         response = await self.execute_request(
-            action="list", path=directory_urn.quote(), data=data
+            action="list", path=directory_urn.path(), data=data
         )
         return WebDavXmlUtils.parse_get_list_property_response(
             await response.read(), properties=properties, hostname=self._url
@@ -402,7 +402,7 @@ class Client:
 
         urn = Urn(remote_path)
         try:
-            response = await self.execute_request(action="check", path=urn.quote())
+            response = await self.execute_request(action="check", path=urn.path())
         except RemoteResourceNotFoundError:
             return False
 
@@ -426,7 +426,7 @@ class Client:
 
         try:
             response = await self.execute_request(
-                action="mkdir", path=directory_urn.quote()
+                action="mkdir", path=directory_urn.path()
             )
         except MethodNotSupportedError:
             # Yandex WebDAV returns 405 status code when directory already exists
@@ -449,7 +449,7 @@ class Client:
             raise RemoteResourceNotFoundError(urn.path())
 
         response = await self.execute_request(
-            action="download", path=urn.quote(), timeout=timeout
+            action="download", path=urn.path(), timeout=timeout
         )
         return _iter_content(response, self._options.chunk_size)
 
@@ -477,7 +477,7 @@ class Client:
         if not await self.check(urn.path()):
             raise RemoteResourceNotFoundError(urn.path())
 
-        response = await self.execute_request(action="download", path=urn.quote())
+        response = await self.execute_request(action="download", path=urn.path())
         clen_str = response.headers.get("content-length")
         total = int(clen_str) if clen_str is not None else None
         current = 0
@@ -599,7 +599,7 @@ class Client:
             raise RemoteResourceNotFoundError(urn.path())
 
         async with aiofiles.open(local_path, "wb") as local_file:
-            response = await self.execute_request("download", urn.quote())
+            response = await self.execute_request("download", urn.path())
             clen_str = response.headers.get("content-length")
             total = int(clen_str) if clen_str is not None else None
             current = 0
@@ -647,7 +647,7 @@ class Client:
 
         await self.execute_request(
             action="upload",
-            path=urn.quote(),
+            path=urn.path(),
             data=buff,
             timeout=timeout,
             headers_ext=headers,
@@ -787,11 +787,13 @@ class Client:
 
             if callable(progress):
                 await self.execute_request(
-                    action="upload", path=urn.quote(), data=read_in_chunks(local_file)
+                    action="upload", path=urn.path(), data=read_in_chunks(local_file)
                 )
             else:
                 await self.execute_request(
-                    action="upload", path=urn.quote(), data=local_file
+                    action="upload",
+                    path=urn.path(),
+                    data=local_file,
                 )
 
     async def copy(
@@ -813,11 +815,11 @@ class Client:
         if not await self.check(urn_to.parent()):
             raise RemoteParentNotFoundError(urn_to.path())
 
-        headers = [f"Destination: {self.get_url(urn_to.quote())}"]
+        headers = [f"Destination: {self.get_url(urn_to.path())}"]
         if await self.is_dir(urn_from.path()):
             headers.append(f"Depth: {depth}")
         await self.execute_request(
-            action="copy", path=urn_from.quote(), headers_ext=headers
+            action="copy", path=urn_from.path(), headers_ext=headers
         )
 
     async def move(
@@ -839,11 +841,11 @@ class Client:
         if not await self.check(urn_to.parent()):
             raise RemoteParentNotFoundError(urn_to.path())
 
-        header_destination = f"Destination: {self.get_url(urn_to.quote())}"
+        header_destination = f"Destination: {self.get_url(urn_to.path())}"
         header_overwrite = f"Overwrite: {'T' if overwrite else 'F'}"
         await self.execute_request(
             action="move",
-            path=urn_from.quote(),
+            path=urn_from.path(),
             headers_ext=[header_destination, header_overwrite],
         )
 
@@ -857,7 +859,7 @@ class Client:
         :param remote_path: the remote resource whisch will be deleted.
         """
         urn = Urn(remote_path)
-        await self.execute_request(action="clean", path=urn.quote())
+        await self.execute_request(action="clean", path=urn.path())
 
     async def info(self, remote_path: str) -> dict[str, str]:
         """Get information about resource on WebDAV.
@@ -876,7 +878,7 @@ class Client:
         urn = Urn(remote_path)
         await self._check_remote_resource(remote_path, urn)
 
-        response = await self.execute_request(action="info", path=urn.quote())
+        response = await self.execute_request(action="info", path=urn.path())
         path = self.get_full_path(urn)
         return WebDavXmlUtils.parse_info_response(
             content=await response.read(), path=path, hostname=self._url
@@ -900,7 +902,7 @@ class Client:
         await self._check_remote_resource(remote_path, urn)
 
         response = await self.execute_request(
-            action="info", path=urn.quote(), headers_ext=["Depth: 0"]
+            action="info", path=urn.path(), headers_ext=["Depth: 0"]
         )
         path = self.get_full_path(urn)
         return WebDavXmlUtils.parse_is_dir_response(
@@ -935,7 +937,7 @@ class Client:
             requested_properties
         )
         response = await self.execute_request(
-            action="get_property", path=urn.quote(), data=data
+            action="get_property", path=urn.path(), data=data
         )
         return WebDavXmlUtils.parse_get_properties_response(
             await response.read(), requested_properties
@@ -972,7 +974,7 @@ class Client:
             raise RemoteResourceNotFoundError(urn.path())
 
         data = WebDavXmlUtils.create_set_property_batch_request_content(properties)
-        await self.execute_request(action="set_property", path=urn.quote(), data=data)
+        await self.execute_request(action="set_property", path=urn.path(), data=data)
 
     async def lock(
         self, remote_path: str = DEFAULT_ROOT, timeout: int = 0
@@ -992,7 +994,7 @@ class Client:
 
         response = await self.execute_request(
             action="lock",
-            path=Urn(remote_path).quote(),
+            path=Urn(remote_path).path(),
             headers_ext=headers_ext,
             data="""<D:lockinfo xmlns:D='DAV:'>
                 <D:lockscope>
@@ -1008,7 +1010,7 @@ class Client:
             url=self._url,
             username=self._username,
             password=self._password,
-            lock_path=Urn(remote_path).quote(),
+            lock_path=Urn(remote_path).path(),
             lock_token=response.headers["Lock-Token"],
             options=self._options,
         )
