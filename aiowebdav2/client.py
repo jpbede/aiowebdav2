@@ -717,8 +717,8 @@ class Client:
         await self.mkdir(remote_path)
 
         for resource_name in local_path.iterdir():
-            _remote_path = f"{urn.path()}{resource_name}".replace("\\", "")
-            _local_path = local_path / resource_name
+            _remote_path = f"{urn.path()}{resource_name.name}".replace("\\", "")
+            _local_path = resource_name
             await self.upload(
                 local_path=_local_path,
                 remote_path=_remote_path,
