@@ -126,6 +126,7 @@ class Client:
     }
 
     _close_session: bool = False
+    _base_url_path: str = "/"
 
     def __init__(
         self,
@@ -153,6 +154,8 @@ class Client:
         self._close_session = not bool(self._options.session)
         self.http_header = self.default_http_header.copy()
         self.requests = self.default_requests.copy()
+
+        self._base_url_path = yarl.URL(self._url).path
 
     def get_headers(
         self, action: str, headers_ext: list[str] | None = None
@@ -311,7 +314,9 @@ class Client:
         urns = WebDavXmlUtils.parse_get_list_response(await response.read())
 
         return [
-            urn.path() for urn in urns if Urn.compare_path(path, urn.path()) is False
+            urn.path(self._base_url_path)
+            for urn in urns
+            if Urn.compare_path(path, urn.path(self._base_url_path)) is False
         ]
 
     async def list_with_infos(
