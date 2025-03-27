@@ -11,12 +11,15 @@ from aiowebdav2 import Client
 from aiowebdav2.client import ClientOptions
 from aiowebdav2.exceptions import (
     MethodNotSupportedError,
+    NotEnoughSpaceError,
+    OptionNotValidError,
+    RemoteParentNotFoundError,
     RemoteResourceNotFoundError,
     UnauthorizedError,
 )
 from aiowebdav2.models import Property, PropertyRequest
 
-from . import load_responses
+from . import load_responses, upload_stream
 
 
 @pytest.mark.parametrize(
@@ -511,8 +514,64 @@ async def test_upload_iter_content_length(
         callback=callback,
     )
 
-    async def stream() -> AsyncGenerator[bytes, None]:
-        yield b"Hello, "
-        yield b"world!"
+    await client.upload_iter(upload_stream(), "/test_dir/test.txt", content_length=12)
 
-    await client.upload_iter(stream(), "/test_dir/test.txt", content_length=12)
+
+async def test_upload_iter_not_enough_space(
+    client: Client, responses: aioresponses
+) -> None:
+    """Test upload iter with not enough space."""
+    responses.add(
+        "https://webdav.example.com/test_dir/test.txt",
+        "PUT",
+        headers={"Accept": "*/*"},
+        status=507,
+    )
+
+    with pytest.raises(NotEnoughSpaceError):
+        await client.upload_iter(
+            upload_stream(), "/test_dir/test.txt", content_length=12
+        )
+
+
+async def test_upload_iter_on_dir_fails(
+    client: Client, responses: aioresponses
+) -> None:
+    """Test upload iter on a directory."""
+    responses.add(
+        "https://webdav.example.com/test_dir/",
+        "PUT",
+        headers={"Accept": "*/*"},
+        status=409,
+    )
+
+    with pytest.raises(OptionNotValidError):
+        await client.upload_iter(upload_stream(), "/test_dir/")
+
+
+async def test_upload_iter_parent_missing(responses: aioresponses) -> None:
+    """Test upload iter on a directory."""
+    responses.add(
+        "https://webdav.example.com/test_dir/",
+        "PROPFIND",
+        headers={"Accept": "*/*"},
+        status=404,
+    )
+    responses.add(
+        "https://webdav.example.com/",
+        "PROPFIND",
+        headers={"Accept": "*/*"},
+        status=207,
+    )
+
+    client = Client(
+        url="https://webdav.example.com",
+        username="user",
+        password="password",
+    )
+
+    with pytest.raises(
+        RemoteParentNotFoundError,
+        match="Remote parent for: /test_dir/test.txt not found",
+    ):
+        await client.upload_iter(upload_stream(), "/test_dir/test.txt")
