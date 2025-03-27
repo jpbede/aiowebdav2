@@ -59,6 +59,22 @@ async def test_list_files(
     assert files == ["/test_dir/", "/test_dir/test.txt"]
 
 
+async def test_list_files_empty(client: Client, responses: aioresponses) -> None:
+    """Test list files with empty response."""
+    responses.clear()
+    responses.add(
+        "https://webdav.example.com",
+        "PROPFIND",
+        headers={"Accept": "*/*", "Depth": "1"},
+        content_type="application/xml",
+        status=200,
+        body=load_responses("get_list_empty.xml"),
+    )
+
+    files = await client.list_files()
+    assert not files
+
+
 async def test_list_files_resource_not_found(
     client: Client, responses: aioresponses
 ) -> None:
