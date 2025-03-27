@@ -9,7 +9,11 @@ import pytest
 
 from aiowebdav2 import Client
 from aiowebdav2.client import ClientOptions
-from aiowebdav2.exceptions import MethodNotSupportedError, UnauthorizedError
+from aiowebdav2.exceptions import (
+    MethodNotSupportedError,
+    RemoteResourceNotFoundError,
+    UnauthorizedError,
+)
 from aiowebdav2.models import Property, PropertyRequest
 
 from . import load_responses
@@ -50,6 +54,42 @@ async def test_list_files(
     files = await client.list_files()
     assert len(files) == 2
     assert files == ["/test_dir/", "/test_dir/test.txt"]
+
+
+async def test_list_files_resource_not_found(
+    client: Client, responses: aioresponses
+) -> None:
+    """Test list files with parent not found."""
+    responses.add(
+        "https://webdav.example.com/test_dir/",
+        "PROPFIND",
+        headers={"Accept": "*/*", "Depth": "1"},
+        content_type="application/xml",
+        status=404,
+    )
+
+    with pytest.raises(RemoteResourceNotFoundError):
+        await client.list_files("/test_dir/")
+
+
+async def test_list_files_recursive(client: Client, responses: aioresponses) -> None:
+    """Test list files recursively."""
+    responses.add(
+        "https://webdav.example.com/test_dir/",
+        "PROPFIND",
+        headers={"Accept": "*/*", "Depth": "infinity"},
+        content_type="application/xml",
+        status=200,
+        body=load_responses("get_list_recursive.xml"),
+    )
+
+    files = await client.list_files("/test_dir/", recursive=True)
+    assert len(files) == 3
+    assert files == [
+        "/test_dir/test.txt",
+        "/test_dir/test_dir2/",
+        "/test_dir/test_dir2/test.txt",
+    ]
 
 
 async def test_list_with_infos(client: Client) -> None:
