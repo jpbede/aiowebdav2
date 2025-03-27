@@ -311,9 +311,7 @@ class Client:
         urns = WebDavXmlUtils.parse_get_list_response(await response.read())
 
         return [
-            urn.filename()
-            for urn in urns
-            if Urn.compare_path(path, urn.path()) is False
+            urn.path() for urn in urns if Urn.compare_path(path, urn.path()) is False
         ]
 
     async def list_with_infos(
@@ -557,14 +555,14 @@ class Client:
 
         local_path.mkdir(parents=True)
 
-        for resource_name in await self.list_files(urn.path()):
-            if urn.path().endswith(resource_name):
+        for resource_path in await self.list_files(urn.path()):
+            if Urn.compare_path(urn.path(), resource_path):
                 continue
-            _remote_path = f"{urn.path()}{resource_name}"
-            _local_path = Path(local_path) / resource_name
+            _urn = Urn(resource_path)
+            _local_path = Path(local_path) / _urn.filename()
             await self.download(
                 local_path=_local_path,
-                remote_path=_remote_path,
+                remote_path=resource_path,
                 progress=progress,
             )
 

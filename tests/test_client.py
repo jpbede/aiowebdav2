@@ -19,7 +19,7 @@ async def test_list_files(client: Client) -> None:
     """Test list files."""
     files = await client.list_files()
     assert len(files) == 2
-    assert files == ["test_dir/", "test.txt"]
+    assert files == ["/test_dir/", "/test_dir/test.txt"]
 
 
 async def test_list_with_infos(client: Client) -> None:
