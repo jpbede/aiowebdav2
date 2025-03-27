@@ -1,6 +1,6 @@
 """Fixtures for aiowebdav2 tests."""
 
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Callable, Generator
 
 import aiohttp
 from aioresponses import aioresponses
@@ -44,3 +44,18 @@ async def client() -> AsyncGenerator[Client, None]:
         ) as c,
     ):
         yield c
+
+
+@pytest.fixture
+async def get_client() -> Callable[[str], Client]:
+    """Return a aiowebdav2 client."""
+
+    def _get_client(path: str = "/") -> Client:
+        return Client(
+            url=f"https://webdav.example.com{path}",
+            username="user",
+            password="password",
+            options=ClientOptions(disable_check=True),
+        )
+
+    return _get_client

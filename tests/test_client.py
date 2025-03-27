@@ -1,6 +1,6 @@
 """Tests for the client module."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
 import aiohttp
@@ -15,8 +15,38 @@ from aiowebdav2.models import Property, PropertyRequest
 from . import load_responses
 
 
-async def test_list_files(client: Client) -> None:
+@pytest.mark.parametrize(
+    ("server_path", "response"),
+    [
+        (
+            "/",
+            load_responses("get_list.xml"),
+        ),
+        (
+            "/remote.php/webdav/",
+            load_responses("nextcloud/get_list.xml"),
+        ),
+    ],
+)
+async def test_list_files(
+    get_client: Callable[[str], Client],
+    server_path: str,
+    response: str,
+    responses: aioresponses,
+) -> None:
     """Test list files."""
+    responses.clear()
+    responses.add(
+        f"https://webdav.example.com{server_path}",
+        "PROPFIND",
+        headers={"Accept": "*/*", "Depth": "1"},
+        content_type="application/xml",
+        status=200,
+        body=response,
+    )
+
+    client = get_client(server_path)
+
     files = await client.list_files()
     assert len(files) == 2
     assert files == ["/test_dir/", "/test_dir/test.txt"]
