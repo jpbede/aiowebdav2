@@ -29,7 +29,7 @@ class Urn:
     def path(self, remove_part: str | None = None) -> str:
         """Return path."""
         if remove_part:
-            return unquote(self._path.replace(remove_part, "/"))
+            return unquote(self._path).replace(remove_part, "/")
         return unquote(self._path)
 
     def quote(self) -> str:
