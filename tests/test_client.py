@@ -33,6 +33,10 @@ from . import load_responses, upload_stream
             "/remote.php/webdav/",
             load_responses("nextcloud/get_list.xml"),
         ),
+        (
+            "/remote.php/webdav/test test/",
+            load_responses("nextcloud/get_list_with_spaces.xml"),
+        ),
     ],
 )
 async def test_list_files(
