@@ -168,3 +168,15 @@ class UnauthorizedError(WebDavError):
     def __str__(self) -> str:
         """Return string representation of exception."""
         return f"Unauthorized access to {self.path}"
+
+
+class AccessDeniedError(WebDavError):
+    """Exception for access denied."""
+
+    def __init__(self, path: str) -> None:
+        """Exception for access denied."""
+        self.path = path
+
+    def __str__(self) -> str:
+        """Return string representation of exception."""
+        return f"Access denied to {self.path}"

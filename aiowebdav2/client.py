@@ -24,6 +24,7 @@ from dateutil.parser import parse as dateutil_parse
 import yarl
 
 from .exceptions import (
+    AccessDeniedError,
     ConnectionExceptionError,
     LocalResourceNotFoundError,
     MethodNotSupportedError,
@@ -259,6 +260,8 @@ class Client:
             raise UnauthorizedError(self._url)
         if response.status == 507:
             raise NotEnoughSpaceError
+        if response.status == 403:
+            raise AccessDeniedError(self._url)
         if response.status == 404:
             raise RemoteResourceNotFoundError(path=path)
         if response.status == 423:
