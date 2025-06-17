@@ -10,6 +10,7 @@ import pytest
 from aiowebdav2 import Client
 from aiowebdav2.client import ClientOptions
 from aiowebdav2.exceptions import (
+    AccessDeniedError,
     MethodNotSupportedError,
     NotEnoughSpaceError,
     OptionNotValidError,
@@ -514,6 +515,22 @@ async def test_unauthorized(client: Client, responses: aioresponses) -> None:
 
     with pytest.raises(
         UnauthorizedError, match="Unauthorized access to https://webdav.example.com"
+    ):
+        await client.info("/test_dir/test.txt")
+
+
+async def test_access_denied(client: Client, responses: aioresponses) -> None:
+    """Test access denied."""
+    responses.add(
+        "https://webdav.example.com/test_dir/test.txt",
+        "PROPFIND",
+        headers={"Accept": "*/*", "Depth": "0"},
+        content_type="application/xml",
+        status=403,
+    )
+
+    with pytest.raises(
+        AccessDeniedError, match="Access denied to https://webdav.example.com"
     ):
         await client.info("/test_dir/test.txt")
 
