@@ -284,6 +284,12 @@ async def test_set_property(client: Client, responses: aioresponses) -> None:
 async def test_mkdir(client: Client, responses: aioresponses) -> None:
     """Test mkdir."""
     responses.add(
+        "https://webdav.example.com/test_dir/",
+        "PROPFIND",
+        status=200,
+        body=load_responses("is_dir_file.xml"),
+    )
+    responses.add(
         "https://webdav.example.com/test_dir/test_dir2/",
         "MKCOL",
         headers={"Accept": "*/*"},
@@ -500,6 +506,7 @@ async def test_client_with_external_session() -> None:
     assert not c._session.closed
 
     await external_session.close()
+    assert external_session.closed
     assert c._session.closed
 
 
@@ -588,6 +595,12 @@ async def test_upload_iter_on_dir_fails(
 
 async def test_upload_iter_parent_missing(responses: aioresponses) -> None:
     """Test upload iter on a directory."""
+    responses.add(
+        "https://webdav.example.com/test_dir/test.txt",
+        "PUT",
+        headers={"Accept": "*/*"},
+        status=409,
+    )
     responses.add(
         "https://webdav.example.com/test_dir/",
         "PROPFIND",

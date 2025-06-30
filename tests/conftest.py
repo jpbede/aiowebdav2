@@ -2,12 +2,10 @@
 
 from collections.abc import AsyncGenerator, Callable, Generator
 
-import aiohttp
 from aioresponses import aioresponses
 import pytest
 
 from aiowebdav2 import Client
-from aiowebdav2.client import ClientOptions
 from tests import load_responses
 
 
@@ -35,12 +33,10 @@ def mock_responses(responses: aioresponses) -> None:
 async def client() -> AsyncGenerator[Client, None]:
     """Return a aiowebdav2 client."""
     async with (
-        aiohttp.ClientSession() as session,
         Client(
             url="https://webdav.example.com",
             username="user",
             password="password",
-            options=ClientOptions(session=session, disable_check=True),
         ) as c,
     ):
         yield c
@@ -55,7 +51,6 @@ async def get_client() -> Callable[[str], Client]:
             url=f"https://webdav.example.com{path}",
             username="user",
             password="password",
-            options=ClientOptions(disable_check=True),
         )
 
     return _get_client
