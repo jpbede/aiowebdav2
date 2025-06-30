@@ -180,3 +180,16 @@ class AccessDeniedError(WebDavError):
     def __str__(self) -> str:
         """Return string representation of exception."""
         return f"Access denied to {self.path}"
+
+
+class ConflictError(WebDavError):
+    """Exception for conflict error."""
+
+    def __init__(self, path: str, message: str) -> None:
+        """Exception for conflict error."""
+        self.path = path
+        self.message = message
+
+    def __str__(self) -> str:
+        """Return string representation of exception."""
+        return f"Conflict error for {self.path} with message {self.message}"

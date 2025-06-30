@@ -25,6 +25,7 @@ import yarl
 
 from .exceptions import (
     AccessDeniedError,
+    ConflictError,
     ConnectionExceptionError,
     LocalResourceNotFoundError,
     MethodNotSupportedError,
@@ -69,7 +70,6 @@ class ClientOptions:
     verify_ssl: bool = True
     root: str = "/"
     chunk_size: int = 65536
-    disable_check: bool = False
     token: str | None = None
     proxy: str | None = None
     proxy_auth: BasicAuth | None = None
@@ -268,6 +268,11 @@ class Client:
             raise ResourceLockedError(path=path)
         if response.status == 405:
             raise MethodNotSupportedError(name=action, server=self._url)
+        if response.status == 409:
+            raise ConflictError(
+                path=path,
+                message=str(await response.read()),
+            )
         if response.status >= 400:
             raise ResponseErrorCodeError(
                 url=self.get_url(path),
@@ -305,11 +310,6 @@ class Client:
         if recursive is True:
             headers = ["Depth:infinity"]
         directory_urn = Urn(remote_path, directory=True)
-        if directory_urn.path() != DEFAULT_ROOT and not await self.check(
-            directory_urn.path()
-        ):
-            raise RemoteResourceNotFoundError(directory_urn.path())
-
         path = Urn.normalize_path(self.get_full_path(directory_urn))
         response = await self.execute_request(
             action="list", path=directory_urn.path(), headers_ext=headers
@@ -340,11 +340,6 @@ class Client:
         if recursive is True:
             headers = ["Depth:infinity"]
         directory_urn = Urn(remote_path, directory=True)
-        if directory_urn.path() != DEFAULT_ROOT and not await self.check(
-            directory_urn.path()
-        ):
-            raise RemoteResourceNotFoundError(directory_urn.path())
-
         path = Urn.normalize_path(self.get_full_path(directory_urn))
         response = await self.execute_request(
             action="list", path=directory_urn.path(), headers_ext=headers
@@ -369,11 +364,6 @@ class Client:
             properties = []
 
         directory_urn = Urn(remote_path, directory=True)
-        if directory_urn.path() != DEFAULT_ROOT and not await self.check(
-            directory_urn.path()
-        ):
-            raise RemoteResourceNotFoundError(directory_urn.path())
-
         data = WebDavXmlUtils.create_get_property_batch_request_content(properties)
         response = await self.execute_request(
             action="list", path=directory_urn.path(), data=data
@@ -403,9 +393,6 @@ class Client:
         :param remote_path: (optional) path to resource on WebDAV server. Defaults is root directory of WebDAV.
         :return: True if resource is exist or False otherwise
         """
-        if self._options.disable_check:
-            return True
-
         urn = Urn(remote_path)
         try:
             response = await self.execute_request(action="check", path=urn.path())
@@ -448,12 +435,6 @@ class Client:
         :param timeout: (optional) the timeout for the request.
         """
         urn = Urn(remote_path)
-        if await self.is_dir(urn.path()):
-            raise OptionNotValidError(name="remote_path", value=remote_path)
-
-        if not await self.check(urn.path()):
-            raise RemoteResourceNotFoundError(urn.path())
-
         response = await self.execute_request(
             action="download", path=urn.path(), timeout=timeout
         )
@@ -477,12 +458,6 @@ class Client:
                 Example def progress_update(current, total, *args) ...
         """
         urn = Urn(remote_path)
-        if await self.is_dir(urn.path()):
-            raise OptionNotValidError(name="remote_path", value=remote_path)
-
-        if not await self.check(urn.path()):
-            raise RemoteResourceNotFoundError(urn.path())
-
         response = await self.execute_request(action="download", path=urn.path())
         clen_str = response.headers.get("content-length")
         total = int(clen_str) if clen_str is not None else None
@@ -522,8 +497,7 @@ class Client:
                 detailed description) and will be called back each time a new file chunk has been successfully
                 transmitted. Example def progress_update(current, total, *args) ...
         """
-        urn = Urn(remote_path)
-        if await self.is_dir(urn.path()):
+        if str(remote_path).endswith("/"):
             await self.download_directory(
                 local_path=local_path,
                 remote_path=remote_path,
@@ -555,9 +529,6 @@ class Client:
                 transmitted. Example def progress_update(current, total, *args) ...
         """
         urn = Urn(remote_path, directory=True)
-        if not await self.is_dir(urn.path()):
-            raise OptionNotValidError(name="remote_path", value=remote_path)
-
         if local_path.exists():
             shutil.rmtree(local_path)
 
@@ -591,18 +562,12 @@ class Client:
                 The function must take *(current, total)* as positional arguments (look at Other Parameters below for a
                 detailed description) and will be called back each time a new file chunk has been successfully
                 transmitted.
-                `total` will be None if missing the HTTP header 'content-length' in the response from the remote.
+                `total` will be None if missing the HTTP header 'content-type' in the response from the remote.
                  Example def progress_update(current, total, *args) ...
         """
         urn = Urn(remote_path)
-        if await self.is_dir(urn.path()):
-            raise OptionNotValidError(name="remote_path", value=remote_path)
-
         if local_path.is_dir():
             raise OptionNotValidError(name="local_path", value=str(local_path))
-
-        if not await self.check(urn.path()):
-            raise RemoteResourceNotFoundError(urn.path())
 
         async with aiofiles.open(local_path, "wb") as local_file:
             response = await self.execute_request("download", urn.path())
@@ -644,20 +609,23 @@ class Client:
         if urn.is_dir():
             raise OptionNotValidError(name="remote_path", value=remote_path)
 
-        if not await self.check(urn.parent()):
-            raise RemoteParentNotFoundError(urn.path())
-
         headers = []
         if content_length is not None:
             headers.append(f"Content-Length: {content_length}")
 
-        await self.execute_request(
-            action="upload",
-            path=urn.path(),
-            data=buff,
-            timeout=timeout,
-            headers_ext=headers,
-        )
+        try:
+            await self.execute_request(
+                action="upload",
+                path=urn.path(),
+                data=buff,
+                timeout=timeout,
+                headers_ext=headers,
+            )
+        except ConflictError as e:
+            if not await self.check(urn.parent()):
+                raise RemoteParentNotFoundError(urn.path()) from e
+
+            raise
 
     async def upload(
         self,
@@ -762,11 +730,8 @@ class Client:
         if local_path.is_dir():
             raise OptionNotValidError(name="local_path", value=str(local_path))
 
-        if not await self.check(urn.parent()):
-            if force is True:
-                await self.mkdir(urn.parent(), recursive=True)
-            else:
-                raise RemoteParentNotFoundError(urn.path())
+        if force is True:
+            await self.mkdir(urn.parent(), recursive=True)
 
         async with aiofiles.open(local_path, "rb") as local_file:
             total = local_path.stat().st_size
@@ -814,12 +779,7 @@ class Client:
         :param depth: folder depth to copy
         """
         urn_from = Urn(remote_path_from)
-        if not await self.check(urn_from.path()):
-            raise RemoteResourceNotFoundError(urn_from.path())
-
         urn_to = Urn(remote_path_to)
-        if not await self.check(urn_to.parent()):
-            raise RemoteParentNotFoundError(urn_to.path())
 
         headers = [f"Destination: {self.get_url(urn_to.path())}"]
         if await self.is_dir(urn_from.path()):
@@ -840,12 +800,7 @@ class Client:
         :param overwrite: (optional) the flag, overwrite file if it exists. Defaults is False
         """
         urn_from = Urn(remote_path_from)
-        if not await self.check(urn_from.path()):
-            raise RemoteResourceNotFoundError(urn_from.path())
-
         urn_to = Urn(remote_path_to)
-        if not await self.check(urn_to.parent()):
-            raise RemoteParentNotFoundError(urn_to.path())
 
         header_destination = f"Destination: {self.get_url(urn_to.path())}"
         header_overwrite = f"Overwrite: {'T' if overwrite else 'F'}"
@@ -882,19 +837,11 @@ class Client:
                  `content_type`: content type of resource.
         """
         urn = Urn(remote_path)
-        await self._check_remote_resource(remote_path, urn)
-
         response = await self.execute_request(action="info", path=urn.path())
         path = self.get_full_path(urn)
         return WebDavXmlUtils.parse_info_response(
             content=await response.read(), path=path, hostname=self._url
         )
-
-    async def _check_remote_resource(self, remote_path: str, urn: Urn) -> None:
-        if not await self.check(urn.path()) and not await self.check(
-            Urn(remote_path, directory=True).path()
-        ):
-            raise RemoteResourceNotFoundError(remote_path)
 
     async def is_dir(self, remote_path: str) -> bool:
         """Check is the remote resource directory.
@@ -905,8 +852,6 @@ class Client:
         :return: True in case the remote resource is directory and False otherwise.
         """
         urn = Urn(remote_path)
-        await self._check_remote_resource(remote_path, urn)
-
         response = await self.execute_request(
             action="info", path=urn.path(), headers_ext=["Depth: 0"]
         )
@@ -936,9 +881,6 @@ class Client:
     ) -> list[Property]:
         """Get metadata properties of remote resource on WebDAV server."""
         urn = Urn(remote_path)
-        if not await self.check(urn.path()):
-            raise RemoteResourceNotFoundError(urn.path())
-
         data = WebDavXmlUtils.create_get_property_batch_request_content(
             requested_properties
         )
@@ -976,9 +918,6 @@ class Client:
                        `value`: (optional) the value of property which will be set. Defaults is empty string.
         """
         urn = Urn(remote_path)
-        if not await self.check(urn.path()):
-            raise RemoteResourceNotFoundError(urn.path())
-
         data = WebDavXmlUtils.create_set_property_batch_request_content(properties)
         await self.execute_request(action="set_property", path=urn.path(), data=data)
 
