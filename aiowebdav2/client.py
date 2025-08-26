@@ -402,19 +402,15 @@ class Client:
         return 200 <= int(response.status) < 300
 
     async def exists_dir(self, remote_path: str) -> bool:
-        """Check an existence of remote directory on WebDAV server by remote path.
+        """Return True if a remote directory exists at remote_path, False otherwise.
 
-        More information you can find by link https://www.rfc-editor.org/rfc/rfc4918.html
-        :param remote_path: path to directory on WebDAV server.
-        :return: True if directory is exist or False otherwise
+        See RFC 4918 §9.1 for PROPFIND semantics.
         """
-        urn = Urn(remote_path, directory=True)
         try:
-            response = await self.execute_request(action="check", path=urn.path())
+            # Confirm the resource is a directory (not just that it exists).
+            return await self.is_dir(remote_path)
         except RemoteResourceNotFoundError:
             return False
-
-        return 200 <= int(response.status) < 300
 
     async def mkdir(self, remote_path: str, *, recursive: bool = False) -> bool:
         """Make new directory on WebDAV server.

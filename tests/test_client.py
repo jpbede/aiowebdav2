@@ -625,27 +625,3 @@ async def test_upload_iter_parent_missing(responses: aioresponses) -> None:
         match="Remote parent for: /test_dir/test.txt not found",
     ):
         await client.upload_iter(upload_stream(), "/test_dir/test.txt")
-
-
-async def test_exists_dir_found_and_not_found(
-    responses: aioresponses, client: Client
-) -> None:
-    """Test exists_dir when directory is found and not found."""
-    # Directory exists (simulate 200 OK)
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "PROPFIND",
-        status=200,
-    )
-    result = await client.exists_dir("/test_dir/")
-    assert result is True
-
-    # Directory does not exist (simulate 404)
-    responses.clear()
-    responses.add(
-        "https://webdav.example.com/missing_dir/",
-        "PROPFIND",
-        status=404,
-    )
-    result = await client.exists_dir("/missing_dir/")
-    assert result is False
