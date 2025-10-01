@@ -238,7 +238,7 @@ class Client:
             response = await self._session.request(
                 method=method,
                 url=url,
-                auth=BasicAuth(self._username, self._password)
+                auth=BasicAuth(self._username, self._password, encoding="utf-8")
                 if (not self._options.token and not self._session.auth)
                 and (self._username and self._password)
                 else None,
