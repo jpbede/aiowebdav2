@@ -1,6 +1,7 @@
 """Tests for the client module."""
 
 from collections.abc import AsyncGenerator, Callable
+import re
 from typing import Any
 
 import aiohttp
@@ -521,7 +522,8 @@ async def test_unauthorized(client: Client, responses: aioresponses) -> None:
     )
 
     with pytest.raises(
-        UnauthorizedError, match="Unauthorized access to https://webdav.example.com"
+        UnauthorizedError,
+        match=re.escape("Unauthorized access to https://webdav.example.com"),
     ):
         await client.info("/test_dir/test.txt")
 
@@ -537,7 +539,8 @@ async def test_access_denied(client: Client, responses: aioresponses) -> None:
     )
 
     with pytest.raises(
-        AccessDeniedError, match="Access denied to https://webdav.example.com"
+        AccessDeniedError,
+        match=re.escape("Access denied to https://webdav.example.com"),
     ):
         await client.info("/test_dir/test.txt")
 
@@ -622,6 +625,6 @@ async def test_upload_iter_parent_missing(responses: aioresponses) -> None:
 
     with pytest.raises(
         RemoteParentNotFoundError,
-        match="Remote parent for: /test_dir/test.txt not found",
+        match=re.escape("Remote parent for: /test_dir/test.txt not found"),
     ):
         await client.upload_iter(upload_stream(), "/test_dir/test.txt")
