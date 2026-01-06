@@ -39,7 +39,7 @@ jobs:
       - name: 🚀 Run pytest
         run: poetry run pytest --cov aiowebdav2 tests
       - name: ⬆️ Upload coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-${{ matrix.python }}
           path: .coverage
