@@ -4,7 +4,6 @@ import asyncio
 from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 import logging
-from pathlib import Path
 from re import sub
 import shutil
 from typing import IO, Any, ClassVar, Self
@@ -20,6 +19,7 @@ from aiohttp import (
     ClientTimeout,
 )
 from aiohttp.client import DEFAULT_TIMEOUT
+from anyio import Path
 from dateutil.parser import parse as dateutil_parse
 import yarl
 
@@ -149,9 +149,7 @@ class Client:
         self._password = password
         self._options = options or ClientOptions()
 
-        self._session = (
-            self._options.session if self._options.session else ClientSession()
-        )
+        self._session = self._options.session or ClientSession()
         self._close_session = not bool(self._options.session)
         self.http_header = self.default_http_header.copy()
         self.requests = self.default_requests.copy()
@@ -532,7 +530,7 @@ class Client:
         if local_path.exists():
             shutil.rmtree(local_path)
 
-        local_path.mkdir(parents=True)
+        await local_path.mkdir(parents=True)
 
         for resource_path in await self.list_files(urn.path()):
             if Urn.compare_path(urn.path(), resource_path):
@@ -690,7 +688,7 @@ class Client:
 
         await self.mkdir(remote_path)
 
-        for resource_name in local_path.iterdir():
+        async for resource_name in local_path.iterdir():
             _remote_path = f"{urn.path()}{resource_name}".replace("\\", "")
             _local_path = local_path / resource_name
             await self.upload(
@@ -734,7 +732,7 @@ class Client:
             await self.mkdir(urn.parent(), recursive=True)
 
         async with aiofiles.open(local_path, "rb") as local_file:
-            total = local_path.stat().st_size
+            total = (await local_path.stat()).st_size
 
             async def read_in_chunks(
                 file_object: aiofiles.threadpool.binary.AsyncBufferedIOBase,
@@ -989,7 +987,7 @@ class Client:
         expression = f"^{urn.path()}"
         remote_resource_names = prune(paths, expression)
 
-        for local_resource_name in local_directory.iterdir():
+        async for local_resource_name in local_directory.iterdir():
             local_path = local_directory / local_resource_name
             remote_path = f"{urn.path()}{local_resource_name}"
 
@@ -1026,7 +1024,7 @@ class Client:
         await self._validate_remote_directory(urn)
         self._validate_local_directory(local_directory)
 
-        local_resource_names = [item.name for item in local_directory.iterdir()]
+        local_resource_names = [item.name async for item in local_directory.iterdir()]
 
         paths = await self.list_files(urn.path())
         expression = f"^{remote_directory}"
@@ -1042,7 +1040,7 @@ class Client:
             if remote_urn.path().endswith("/"):
                 if not local_path.exists():
                     updated = True
-                    local_path.mkdir()
+                    await local_path.mkdir()
                 result = await self.pull(
                     remote_directory=remote_path, local_directory=local_path
                 )
@@ -1076,7 +1074,8 @@ class Client:
             remote_last_mod_date_unix_ts = int(
                 remote_last_mod_date_converted.timestamp()
             )
-            local_last_mod_date_unix_ts = int(local_path.stat().st_mtime)
+            stat = await local_path.stat()
+            local_last_mod_date_unix_ts = int(stat.st_mtime)
         except (ValueError, RuntimeWarning, KeyError):
             _LOGGER.exception(
                 "Error while parsing dates or getting last modified informationruff",
