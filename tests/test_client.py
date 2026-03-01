@@ -1358,3 +1358,101 @@ async def test_publish_unpublish(client: Client, responses: aioresponses) -> Non
 
     await client.publish("/test.txt")
     await client.unpublish("/test.txt")
+
+
+async def test_download_directory_concurrent(
+    client: Client, responses: aioresponses, tmp_path: Any
+) -> None:
+    """Test download directory with concurrency > 1 downloads all files."""
+    responses.add(
+        "https://webdav.example.com/test_dir/",
+        "PROPFIND",
+        headers={"Accept": "*/*", "Depth": "1"},
+        content_type="application/xml",
+        status=200,
+        body=load_responses("get_list_multiple.xml"),
+    )
+    for name in ("a.txt", "b.txt", "c.txt"):
+        responses.add(
+            f"https://webdav.example.com/test_dir/{name}",
+            "GET",
+            body=f"{name} content".encode(),
+            headers={"content-length": str(len(f"{name} content"))},
+            status=200,
+        )
+
+    local_dir = AnyioPath(tmp_path) / "concurrent_dl"
+    await client.download_directory("/test_dir/", local_dir, concurrency=3)
+
+    for name in ("a.txt", "b.txt", "c.txt"):
+        assert await (local_dir / name).exists()
+        assert await (local_dir / name).read_text() == f"{name} content"
+
+
+async def test_upload_directory_concurrent(
+    client: Client, responses: aioresponses, tmp_path: Any
+) -> None:
+    """Test upload directory with concurrency > 1 uploads all files."""
+    local_dir = AnyioPath(tmp_path) / "concurrent_ul"
+    await local_dir.mkdir(parents=True)
+    for name in ("a.txt", "b.txt", "c.txt"):
+        await (local_dir / name).write_text(f"{name} content")
+
+    responses.add(
+        "https://webdav.example.com/test_dir/",
+        "MKCOL",
+        headers={"Accept": "*/*", "Connection": "Keep-Alive"},
+        status=201,
+    )
+    uploaded_urls: list[str] = []
+
+    def upload_callback(_url: str, **_kwargs: dict[str, Any]) -> CallbackResult:
+        uploaded_urls.append(str(_url))
+        return CallbackResult(status=201)
+
+    responses.add(
+        re.compile(r"https://webdav\.example\.com/test_dir/.+"),
+        "PUT",
+        headers={"Accept": "*/*"},
+        callback=upload_callback,
+    )
+    # Must add enough responses for 3 files
+    responses.add(
+        re.compile(r"https://webdav\.example\.com/test_dir/.+"),
+        "PUT",
+        headers={"Accept": "*/*"},
+        callback=upload_callback,
+    )
+    responses.add(
+        re.compile(r"https://webdav\.example\.com/test_dir/.+"),
+        "PUT",
+        headers={"Accept": "*/*"},
+        callback=upload_callback,
+    )
+
+    await client.upload_directory("/test_dir/", local_dir, concurrency=3)
+
+    assert len(uploaded_urls) == 3
+
+
+async def test_download_directory_rejects_invalid_concurrency(
+    client: Client, tmp_path: Any
+) -> None:
+    """Test download_directory rejects concurrency < 1."""
+    local_dir = AnyioPath(tmp_path) / "dl"
+    with pytest.raises(OptionNotValidError):
+        await client.download_directory("/test_dir/", local_dir, concurrency=0)
+    with pytest.raises(OptionNotValidError):
+        await client.download_directory("/test_dir/", local_dir, concurrency=-1)
+
+
+async def test_upload_directory_rejects_invalid_concurrency(
+    client: Client, tmp_path: Any
+) -> None:
+    """Test upload_directory rejects concurrency < 1."""
+    local_dir = AnyioPath(tmp_path) / "ul"
+    await local_dir.mkdir(parents=True)
+    with pytest.raises(OptionNotValidError):
+        await client.upload_directory("/test_dir/", local_dir, concurrency=0)
+    with pytest.raises(OptionNotValidError):
+        await client.upload_directory("/test_dir/", local_dir, concurrency=-1)
