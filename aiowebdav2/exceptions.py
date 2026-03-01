@@ -104,17 +104,7 @@ class NoConnectionError(WebDavError):
         return f"No connection with {self.hostname}"
 
 
-# This exception left only for supporting original library interface.
-class NotConnectionError(WebDavError):
-    """Exception for no connection."""
-
-    def __init__(self, hostname: str) -> None:
-        """Exception for no connection."""
-        self.hostname = hostname
-
-    def __str__(self) -> str:
-        """Return string representation of exception."""
-        return f"No connection with {self.hostname}"
+NotConnectionError = NoConnectionError
 
 
 class ResponseErrorCodeError(WebDavError):

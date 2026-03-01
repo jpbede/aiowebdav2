@@ -1,6 +1,7 @@
 """Response and request parsers/creator for WebDAV protocol."""
 
 from io import BytesIO
+import logging
 from urllib.parse import unquote, urlparse, urlsplit
 
 from lxml import etree
@@ -8,6 +9,8 @@ from lxml import etree
 from .exceptions import MethodNotSupportedError, RemoteResourceNotFoundError
 from .models import Property, PropertyRequest
 from .urn import Urn
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class WebDavXmlUtils:
@@ -41,7 +44,8 @@ class WebDavXmlUtils:
                 info["isdir"] = str(is_dir)
                 info["path"] = path
                 infos.append(info)
-        except etree.XMLSyntaxError:
+        except etree.XMLSyntaxError as err:
+            _LOGGER.warning("Failed to parse list info response XML: %s", err)
             return []
 
         return infos
@@ -64,7 +68,8 @@ class WebDavXmlUtils:
                 properties_dict[path] = WebDavXmlUtils.parse_get_properties_response(
                     etree.tostring(response), properties
                 )
-        except etree.XMLSyntaxError:
+        except etree.XMLSyntaxError as err:
+            _LOGGER.warning("Failed to parse list property response XML: %s", err)
             return {}
 
         return properties_dict
@@ -86,7 +91,8 @@ class WebDavXmlUtils:
                 href = Urn.separate + unquote(urlsplit(href_el.text).path)
                 is_dir = len(response.findall(".//{DAV:}collection")) > 0
                 urns.append(Urn(href, directory=is_dir))
-        except etree.XMLSyntaxError:
+        except etree.XMLSyntaxError as err:
+            _LOGGER.warning("Failed to parse list response XML: %s", err)
             return []
 
         return urns
@@ -120,7 +126,8 @@ class WebDavXmlUtils:
             raise MethodNotSupportedError(name="free", server=hostname)
         except TypeError as err:
             raise MethodNotSupportedError(name="free", server=hostname) from err
-        except etree.XMLSyntaxError:
+        except etree.XMLSyntaxError as err:
+            _LOGGER.warning("Failed to parse free space response XML: %s", err)
             return None
 
     @staticmethod
@@ -242,11 +249,8 @@ class WebDavXmlUtils:
         :return: the value of property if it has been found or None otherwise.
         """
         xpath = "//*[local-name() = $name]"
-        return (
-            tree.xpath(xpath, name=name)[0].text
-            if tree.xpath(xpath, name=name)
-            else None
-        )
+        results = tree.xpath(xpath, name=name)
+        return results[0].text if results else None
 
     @staticmethod
     def create_set_property_batch_request_content(properties: list[Property]) -> bytes:

@@ -12,9 +12,18 @@ class Urn:
     def __init__(self, path: str, *, directory: bool = False) -> None:
         """Class for URN representation."""
         self._path = quote(path)
-        expressions = r"/\.+/", "/+"
+        expressions = r"/\./", "/+"
         for expression in expressions:
             self._path = sub(expression, Urn.separate, self._path)
+
+        while "/../" in self._path:
+            updated = sub(r"/[^/]+/\.\./", "/", self._path)
+            if updated == self._path:
+                self._path = self._path.replace("/../", "/")
+                break
+            self._path = updated
+        if self._path.endswith("/.."):
+            self._path = sub(r"/[^/]+/\.\.$", "/", self._path)
 
         if not self._path.startswith(Urn.separate):
             self._path = f"{Urn.separate}{self._path}"
