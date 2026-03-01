@@ -1061,7 +1061,7 @@ class Client:
             local_last_mod_date_unix_ts = int(stat.st_mtime)
         except (ValueError, RuntimeWarning, KeyError):
             _LOGGER.exception(
-                "Error while parsing dates or getting last modified informationruff",
+                "Error while parsing dates or getting last modified information",
             )
 
             # If there is problem when parsing dates, or cannot get
