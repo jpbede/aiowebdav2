@@ -1253,5 +1253,7 @@ class LockClient(Client):
 
     async def __aexit__(self, *_exc_info: object) -> None:
         """Async exit."""
-        await self.execute_request(action="unlock", path=self.__lock_path)
-        await super().__aexit__()
+        try:
+            await self.execute_request(action="unlock", path=self.__lock_path)
+        finally:
+            await super().__aexit__(*_exc_info)
