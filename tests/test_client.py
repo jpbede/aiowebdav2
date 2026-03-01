@@ -628,22 +628,21 @@ async def test_upload_iter_parent_missing(responses: aioresponses) -> None:
         status=207,
     )
 
-    client = Client(
+    async with Client(
         url="https://webdav.example.com",
         username="user",
         password="password",
-    )
-
-    with pytest.raises(
-        RemoteParentNotFoundError,
-        match=re.escape("Remote parent for: /test_dir/test.txt not found"),
-    ):
-        await client.upload_iter(upload_stream(), "/test_dir/test.txt")
+    ) as client:
+        with pytest.raises(
+            RemoteParentNotFoundError,
+            match=re.escape("Remote parent for: /test_dir/test.txt not found"),
+        ):
+            await client.upload_iter(upload_stream(), "/test_dir/test.txt")
 
 
 async def test_prune_paths_helper() -> None:
     """Test prune paths helper."""
-    assert _prune_paths(["/root/file", "/root/dir"], r"^/root/") == [
+    assert _prune_paths(["/root/file", "/root/dir"], "/root/") == [
         "file",
         "dir",
     ]

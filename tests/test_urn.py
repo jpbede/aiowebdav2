@@ -35,3 +35,11 @@ def test_urn_normalize_path_and_compare_path() -> None:
     normalized = Urn.normalize_path("//test_dir//")
     assert normalized == "/test_dir"
     assert Urn.compare_path("/test_dir", "https://example.com/test_dir")
+
+
+def test_urn_parent_segment_normalization() -> None:
+    """Test urn normalizes parent segment references."""
+    assert Urn("/a/b/../c").path() == "/a/c"
+    assert Urn("/a/b/c/../../d").path() == "/a/d"
+    assert Urn("/parent/..").path() == "/"
+    assert Urn("/a/b/..").path() == "/a/"

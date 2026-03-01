@@ -4,7 +4,6 @@ import asyncio
 from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 import logging
-from re import sub
 import shutil
 from typing import IO, Any, ClassVar, Self
 from urllib.parse import unquote
@@ -56,8 +55,10 @@ async def _iter_content(
         yield chunk
 
 
-def _prune_paths(src: list[str], exp: str) -> list[str]:
-    return [sub(exp, "", item) for item in src]
+def _prune_paths(src: list[str], prefix: str) -> list[str]:
+    return [
+        item.removeprefix(prefix) if item.startswith(prefix) else item for item in src
+    ]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -969,8 +970,7 @@ class Client:
         await self._validate_local_directory(local_directory)
 
         paths = await self.list_files(urn.path())
-        expression = f"^{urn.path()}"
-        remote_resource_names = _prune_paths(paths, expression)
+        remote_resource_names = _prune_paths(paths, urn.path())
 
         async for local_resource_name in local_directory.iterdir():
             local_path = local_directory / local_resource_name
@@ -984,11 +984,12 @@ class Client:
                 )
                 updated = updated or result
             else:
-                if (
-                    local_resource_name in remote_resource_names
-                    and not await self.is_local_more_recent(local_path, remote_path)
-                ):
-                    continue
+                if local_resource_name in remote_resource_names:
+                    is_local_newer = await self.is_local_more_recent(
+                        local_path, remote_path
+                    )
+                    if is_local_newer is False:
+                        continue
                 await self.upload_file(remote_path=remote_path, local_path=local_path)
                 updated = True
         return updated
@@ -1008,8 +1009,7 @@ class Client:
         local_resource_names = [item.name async for item in local_directory.iterdir()]
 
         paths = await self.list_files(urn.path())
-        expression = f"^{remote_directory}"
-        remote_resource_names = _prune_paths(paths, expression)
+        remote_resource_names = _prune_paths(paths, remote_directory)
 
         for remote_resource_name in remote_resource_names:
             if urn.path().endswith(remote_resource_name):
@@ -1027,11 +1027,12 @@ class Client:
                 )
                 updated = updated or result
             else:
-                if (
-                    remote_resource_name in local_resource_names
-                    and await self.is_local_more_recent(local_path, remote_path)
-                ):
-                    continue
+                if remote_resource_name in local_resource_names:
+                    is_local_newer = await self.is_local_more_recent(
+                        local_path, remote_path
+                    )
+                    if is_local_newer is True:
+                        continue
 
                 await self.download_file(remote_path=remote_path, local_path=local_path)
                 updated = True
