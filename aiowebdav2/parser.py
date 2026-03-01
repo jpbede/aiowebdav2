@@ -301,6 +301,8 @@ class WebDavXmlUtils:
 
             for resp in responses:
                 href = resp.findtext("{DAV:}href")
+                if href is None:
+                    continue
                 if Urn.compare_path(n_path, href) or Urn.compare_path(
                     n_path, href.removeprefix(prefix)
                 ):

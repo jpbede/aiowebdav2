@@ -54,3 +54,20 @@ def test_extract_response_for_path_missing_response() -> None:
         WebDavXmlUtils.extract_response_for_path(
             content=content, path="/missing", hostname="https://example.com"
         )
+
+
+def test_extract_response_for_path_skips_none_href() -> None:
+    """Test extract_response_for_path skips responses with missing href."""
+    root = etree.Element("multistatus", xmlns="DAV:")
+    # Response without href - should be skipped
+    resp_no_href = etree.SubElement(root, "response")
+    etree.SubElement(resp_no_href, "propstat")
+    # Response with valid href
+    resp_valid = etree.SubElement(root, "response")
+    href = etree.SubElement(resp_valid, "href")
+    href.text = "/test_dir/"
+    content = etree.tostring(etree.ElementTree(root))
+    result = WebDavXmlUtils.extract_response_for_path(
+        content=content, path="/test_dir/", hostname="https://example.com"
+    )
+    assert result is not None
