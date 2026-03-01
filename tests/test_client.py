@@ -265,10 +265,7 @@ async def test_set_property(client: Client, responses: aioresponses) -> None:
     """Test set property."""
 
     def callback(_url: str, **kwargs: dict[str, Any]) -> CallbackResult:
-        assert (
-            kwargs["headers"]["Content-Type"].strip()
-            == "application/x-www-form-urlencoded"
-        )
+        assert kwargs["headers"]["Content-Type"].strip() == "text/xml"
         assert kwargs["headers"]["Accept"].strip() == "*/*"
         assert kwargs["headers"]["Depth"].strip() == "0"
         assert kwargs["data"] == (

@@ -1,5 +1,7 @@
 """Python3 WebDAV client."""
 
+import warnings
+
 from .client import Client, ClientOptions, LockClient
 from .exceptions import (
     AccessDeniedError,
@@ -9,7 +11,6 @@ from .exceptions import (
     LocalResourceNotFoundError,
     MethodNotSupportedError,
     NoConnectionError,
-    NotConnectionError,
     NotEnoughSpaceError,
     NotFoundError,
     NotValidError,
@@ -23,6 +24,19 @@ from .exceptions import (
 )
 from .models import Property, PropertyRequest
 
+
+def __getattr__(name: str) -> type:
+    if name == "NotConnectionError":
+        warnings.warn(
+            "NotConnectionError is deprecated, use NoConnectionError instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return NoConnectionError
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
+
+
 __all__ = [
     "AccessDeniedError",
     "CertificateNotValidError",
@@ -34,7 +48,6 @@ __all__ = [
     "LockClient",
     "MethodNotSupportedError",
     "NoConnectionError",
-    "NotConnectionError",
     "NotEnoughSpaceError",
     "NotFoundError",
     "NotValidError",
