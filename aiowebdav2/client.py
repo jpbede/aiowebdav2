@@ -732,11 +732,11 @@ class Client:
 
                 while current < total:
                     data = await file_object.read(self._options.chunk_size)
-                    if progress is not None:
-                        await self._call_progress(progress, current, total)
-                    current += len(data)
                     if not data:
                         break
+                    current += len(data)
+                    if progress is not None:
+                        await self._call_progress(progress, current, total)
                     yield data
 
             await self.execute_request(
