@@ -1433,3 +1433,26 @@ async def test_upload_directory_concurrent(
     await client.upload_directory("/test_dir/", local_dir, concurrency=3)
 
     assert len(uploaded_urls) == 3
+
+
+async def test_download_directory_rejects_invalid_concurrency(
+    client: Client, tmp_path: Any
+) -> None:
+    """Test download_directory rejects concurrency < 1."""
+    local_dir = AnyioPath(tmp_path) / "dl"
+    with pytest.raises(OptionNotValidError):
+        await client.download_directory("/test_dir/", local_dir, concurrency=0)
+    with pytest.raises(OptionNotValidError):
+        await client.download_directory("/test_dir/", local_dir, concurrency=-1)
+
+
+async def test_upload_directory_rejects_invalid_concurrency(
+    client: Client, tmp_path: Any
+) -> None:
+    """Test upload_directory rejects concurrency < 1."""
+    local_dir = AnyioPath(tmp_path) / "ul"
+    await local_dir.mkdir(parents=True)
+    with pytest.raises(OptionNotValidError):
+        await client.upload_directory("/test_dir/", local_dir, concurrency=0)
+    with pytest.raises(OptionNotValidError):
+        await client.upload_directory("/test_dir/", local_dir, concurrency=-1)

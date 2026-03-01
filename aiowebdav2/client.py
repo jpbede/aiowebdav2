@@ -484,6 +484,8 @@ class Client:
         progress: Callable[[int, int | None], Coroutine[Any, Any, None] | None]
         | None = None,
         concurrency: int = 1,
+        *,
+        _transfer_semaphore: asyncio.Semaphore | None = None,
     ) -> None:
         """Download remote resource from WebDAV and save it in local path.
 
@@ -504,7 +506,15 @@ class Client:
                 remote_path=remote_path,
                 progress=progress,
                 concurrency=concurrency,
+                _transfer_semaphore=_transfer_semaphore,
             )
+        elif _transfer_semaphore is not None:
+            async with _transfer_semaphore:
+                await self.download_file(
+                    local_path=local_path,
+                    remote_path=remote_path,
+                    progress=progress,
+                )
         else:
             await self.download_file(
                 local_path=local_path,
@@ -521,6 +531,7 @@ class Client:
         *,
         overwrite: bool = True,
         concurrency: int = 1,
+        _transfer_semaphore: asyncio.Semaphore | None = None,
     ) -> None:
         """Download directory and downloads all nested files and directories from remote WebDAV to local.
 
@@ -534,6 +545,9 @@ class Client:
                 If False, raise FileExistsError when the local directory already exists.
         :param concurrency: the maximum number of concurrent file transfers. Defaults to 1 (sequential).
         """
+        if concurrency < 1:
+            raise OptionNotValidError(name="concurrency", value=str(concurrency))
+
         urn = Urn(remote_path, directory=True)
         if await local_path.exists():
             if not await local_path.is_dir():
@@ -551,7 +565,10 @@ class Client:
             if not Urn.compare_path(urn.path(), resource_path)
         ]
 
-        if concurrency < 2:
+        semaphore = _transfer_semaphore or (
+            asyncio.Semaphore(concurrency) if concurrency >= 2 else None
+        )
+        if semaphore is None:
             for resource_path in resources:
                 _urn = Urn(resource_path)
                 _local_path = Path(local_path) / _urn.filename()
@@ -562,20 +579,19 @@ class Client:
                     concurrency=concurrency,
                 )
         else:
-            semaphore = asyncio.Semaphore(concurrency)
 
             async def _download_one(resource_path: str) -> None:
-                async with semaphore:
-                    _urn = Urn(resource_path)
-                    _local_path = Path(local_path) / _urn.filename()
-                    await self.download(
-                        local_path=_local_path,
-                        remote_path=resource_path,
-                        progress=progress,
-                        concurrency=concurrency,
-                    )
+                _urn = Urn(resource_path)
+                _local_path = Path(local_path) / _urn.filename()
+                await self.download(
+                    local_path=_local_path,
+                    remote_path=resource_path,
+                    progress=progress,
+                    concurrency=concurrency,
+                    _transfer_semaphore=semaphore,
+                )
 
-            await asyncio.gather(*[_download_one(rp) for rp in resources])
+            await asyncio.gather(*(_download_one(rp) for rp in resources))
 
     async def download_file(
         self,
@@ -651,6 +667,8 @@ class Client:
         progress: Callable[[int, int | None], Coroutine[Any, Any, None] | None]
         | None = None,
         concurrency: int = 1,
+        *,
+        _transfer_semaphore: asyncio.Semaphore | None = None,
     ) -> None:
         """Upload resource to remote path on WebDAV server.
 
@@ -672,7 +690,15 @@ class Client:
                 remote_path=remote_path,
                 progress=progress,
                 concurrency=concurrency,
+                _transfer_semaphore=_transfer_semaphore,
             )
+        elif _transfer_semaphore is not None:
+            async with _transfer_semaphore:
+                await self.upload_file(
+                    local_path=local_path,
+                    remote_path=remote_path,
+                    progress=progress,
+                )
         else:
             await self.upload_file(
                 local_path=local_path,
@@ -687,6 +713,8 @@ class Client:
         progress: Callable[[int, int | None], Coroutine[Any, Any, None] | None]
         | None = None,
         concurrency: int = 1,
+        *,
+        _transfer_semaphore: asyncio.Semaphore | None = None,
     ) -> None:
         """Upload directory to remote path on WebDAV server.
 
@@ -701,6 +729,9 @@ class Client:
                 transmitted. Example def progress_update(current, total, *args) ...
         :param concurrency: the maximum number of concurrent file transfers. Defaults to 1 (sequential).
         """
+        if concurrency < 1:
+            raise OptionNotValidError(name="concurrency", value=str(concurrency))
+
         urn = Urn(remote_path, directory=True)
         if not urn.is_dir():
             raise OptionNotValidError(name="remote_path", value=remote_path)
@@ -719,7 +750,10 @@ class Client:
             _local_path = local_path / local_resource.name
             resources.append((_remote_path, _local_path))
 
-        if concurrency < 2:
+        semaphore = _transfer_semaphore or (
+            asyncio.Semaphore(concurrency) if concurrency >= 2 else None
+        )
+        if semaphore is None:
             for _remote_path, _local_path in resources:
                 await self.upload(
                     local_path=_local_path,
@@ -728,18 +762,17 @@ class Client:
                     concurrency=concurrency,
                 )
         else:
-            semaphore = asyncio.Semaphore(concurrency)
 
             async def _upload_one(rpath: str, lpath: Path) -> None:
-                async with semaphore:
-                    await self.upload(
-                        local_path=lpath,
-                        remote_path=rpath,
-                        progress=progress,
-                        concurrency=concurrency,
-                    )
+                await self.upload(
+                    local_path=lpath,
+                    remote_path=rpath,
+                    progress=progress,
+                    concurrency=concurrency,
+                    _transfer_semaphore=semaphore,
+                )
 
-            await asyncio.gather(*[_upload_one(rp, lp) for rp, lp in resources])
+            await asyncio.gather(*(_upload_one(rp, lp) for rp, lp in resources))
 
     async def upload_file(
         self,
