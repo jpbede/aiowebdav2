@@ -953,15 +953,15 @@ async def test_upload_directory_validations(
 ) -> None:
     """Test upload directory validations."""
     local_dir = AnyioPath(tmp_path) / "local"
-    with pytest.raises(OptionNotValidError):
+    with pytest.raises(LocalResourceNotFoundError):
         await client.upload_directory("/test_dir", local_dir)
 
     await local_dir.mkdir(parents=True)
-    with pytest.raises(OptionNotValidError):
+    with pytest.raises(LocalResourceNotFoundError):
         await client.upload_directory("/test_dir/", local_dir / "file.txt")
 
     missing_dir = AnyioPath(tmp_path) / "missing"
-    with pytest.raises(OptionNotValidError):
+    with pytest.raises(LocalResourceNotFoundError):
         await client.upload_directory("/test_dir/", missing_dir)
 
     responses.add(
