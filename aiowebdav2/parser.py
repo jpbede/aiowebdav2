@@ -172,7 +172,7 @@ class WebDavXmlUtils:
                  `content_type`: content type of resource.
         """
         response = WebDavXmlUtils.extract_response_for_path(
-            content=content, path=path, hostname=hostname
+            content=content, path=path, hostname=hostname, action="info"
         )
         return WebDavXmlUtils.get_info_from_response(response)
 
@@ -186,7 +186,7 @@ class WebDavXmlUtils:
         :return: True in case the remote resource is directory and False otherwise.
         """
         response = WebDavXmlUtils.extract_response_for_path(
-            content=content, path=path, hostname=hostname
+            content=content, path=path, hostname=hostname, action="is_dir"
         )
         resource_type = response.find(".//{DAV:}resourcetype")
         if resource_type is None:
@@ -284,7 +284,7 @@ class WebDavXmlUtils:
 
     @staticmethod
     def extract_response_for_path(
-        content: bytes, path: str, hostname: str
+        content: bytes, path: str, hostname: str, *, action: str = "extract"
     ) -> etree.Element:
         """Extract single response for specified remote resource.
 
@@ -307,4 +307,4 @@ class WebDavXmlUtils:
                     return resp
             raise RemoteResourceNotFoundError(path)
         except etree.XMLSyntaxError as err:
-            raise MethodNotSupportedError(name="is_dir", server=hostname) from err
+            raise MethodNotSupportedError(name=action, server=hostname) from err
