@@ -155,6 +155,8 @@ class Client:
         self.requests = self.default_requests.copy()
 
         self._base_url_path = yarl.URL(self._url).path
+        if not self._base_url_path.endswith(Urn.separate):
+            self._base_url_path += Urn.separate
 
     def get_headers(
         self, action: str, headers_ext: list[str] | None = None
