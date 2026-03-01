@@ -980,6 +980,38 @@ async def test_upload_directory_validations(
     await client.upload_directory("/test_dir/", local_dir)
 
 
+async def test_upload_directory_uses_filename_not_full_path(
+    client: Client, responses: aioresponses, tmp_path: Any
+) -> None:
+    """Test upload directory constructs remote paths from filename, not full local path."""
+    local_dir = AnyioPath(tmp_path) / "upload_src"
+    await local_dir.mkdir(parents=True)
+    await (local_dir / "hello.txt").write_text("data")
+
+    responses.add(
+        "https://webdav.example.com/dest/",
+        "MKCOL",
+        status=201,
+    )
+
+    uploaded_urls: list[str] = []
+
+    def upload_callback(_url: str, **_kwargs: dict[str, Any]) -> CallbackResult:
+        uploaded_urls.append(str(_url))
+        return CallbackResult(status=201)
+
+    responses.add(
+        re.compile(r"https://webdav\.example\.com/dest/.+"),
+        "PUT",
+        callback=upload_callback,
+    )
+
+    await client.upload_directory("/dest/", local_dir)
+
+    assert len(uploaded_urls) == 1
+    assert uploaded_urls[0] == "https://webdav.example.com/dest/hello.txt"
+
+
 async def test_upload_file_progress_and_force(
     responses: aioresponses, tmp_path: Any
 ) -> None:
