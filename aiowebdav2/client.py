@@ -531,6 +531,8 @@ class Client:
         """
         urn = Urn(remote_path, directory=True)
         if await local_path.exists():
+            if not await local_path.is_dir():
+                raise OptionNotValidError(name="local_path", value=str(local_path))
             if not overwrite:
                 msg = f"Local directory already exists: {local_path}"
                 raise FileExistsError(msg)
