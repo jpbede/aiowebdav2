@@ -559,6 +559,7 @@ class Client:
                     local_path=_local_path,
                     remote_path=resource_path,
                     progress=progress,
+                    concurrency=concurrency,
                 )
         else:
             semaphore = asyncio.Semaphore(concurrency)
@@ -571,6 +572,7 @@ class Client:
                         local_path=_local_path,
                         remote_path=resource_path,
                         progress=progress,
+                        concurrency=concurrency,
                     )
 
             await asyncio.gather(*[_download_one(rp) for rp in resources])
@@ -723,6 +725,7 @@ class Client:
                     local_path=_local_path,
                     remote_path=_remote_path,
                     progress=progress,
+                    concurrency=concurrency,
                 )
         else:
             semaphore = asyncio.Semaphore(concurrency)
@@ -733,6 +736,7 @@ class Client:
                         local_path=lpath,
                         remote_path=rpath,
                         progress=progress,
+                        concurrency=concurrency,
                     )
 
             await asyncio.gather(*[_upload_one(rp, lp) for rp, lp in resources])

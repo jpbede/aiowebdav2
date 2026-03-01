@@ -1404,8 +1404,10 @@ async def test_upload_directory_concurrent(
         headers={"Accept": "*/*", "Connection": "Keep-Alive"},
         status=201,
     )
+    uploaded_urls: list[str] = []
 
     def upload_callback(_url: str, **_kwargs: dict[str, Any]) -> CallbackResult:
+        uploaded_urls.append(str(_url))
         return CallbackResult(status=201)
 
     responses.add(
@@ -1429,3 +1431,5 @@ async def test_upload_directory_concurrent(
     )
 
     await client.upload_directory("/test_dir/", local_dir, concurrency=3)
+
+    assert len(uploaded_urls) == 3
