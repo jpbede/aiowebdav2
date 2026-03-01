@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable, Coroutine
 from dataclasses import dataclass
+import inspect
 import logging
 import shutil
 from typing import IO, Any, ClassVar, Self
@@ -446,18 +447,18 @@ class Client:
 
         if progress is not None:
             ret = progress(current, total)
-            if asyncio.iscoroutine(ret):
+            if inspect.isawaitable(ret):
                 await ret
 
         async for chunk in _iter_content(response, self._options.chunk_size):
             write_ret = sink(chunk)
-            if asyncio.iscoroutine(write_ret):
+            if inspect.isawaitable(write_ret):
                 await write_ret
             current += len(chunk)
 
             if progress is not None:
                 ret = progress(current, total)
-                if asyncio.iscoroutine(ret):
+                if inspect.isawaitable(ret):
                     await ret
 
     async def download_from(
@@ -728,7 +729,7 @@ class Client:
             ) -> AsyncIterable[bytes]:
                 if callable(progress):
                     ret = progress(0, total)
-                    if asyncio.iscoroutine(ret):
+                    if inspect.isawaitable(ret):
                         await ret
                 current = 0
 
@@ -736,7 +737,7 @@ class Client:
                     data = await file_object.read(self._options.chunk_size)
                     if callable(progress):
                         ret = progress(current, total)  # call to progress function
-                        if asyncio.iscoroutine(ret):
+                        if inspect.isawaitable(ret):
                             await ret
                     current += len(data)
                     if not data:
