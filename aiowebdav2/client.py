@@ -483,6 +483,7 @@ class Client:
         local_path: Path,
         progress: Callable[[int, int | None], Coroutine[Any, Any, None] | None]
         | None = None,
+        concurrency: int = 1,
     ) -> None:
         """Download remote resource from WebDAV and save it in local path.
 
@@ -494,12 +495,15 @@ class Client:
                 The function must take *(current, total)* as positional arguments (look at Other Parameters below for a
                 detailed description) and will be called back each time a new file chunk has been successfully
                 transmitted. Example def progress_update(current, total, *args) ...
+        :param concurrency: the maximum number of concurrent file transfers. Defaults to 1 (sequential).
+                Only applies to directory downloads.
         """
         if str(remote_path).endswith("/"):
             await self.download_directory(
                 local_path=local_path,
                 remote_path=remote_path,
                 progress=progress,
+                concurrency=concurrency,
             )
         else:
             await self.download_file(
@@ -516,6 +520,7 @@ class Client:
         | None = None,
         *,
         overwrite: bool = True,
+        concurrency: int = 1,
     ) -> None:
         """Download directory and downloads all nested files and directories from remote WebDAV to local.
 
@@ -527,6 +532,7 @@ class Client:
                 transmitted. Example def progress_update(current, total, *args) ...
         :param overwrite: if True (default), delete existing local directory before downloading.
                 If False, raise FileExistsError when the local directory already exists.
+        :param concurrency: the maximum number of concurrent file transfers. Defaults to 1 (sequential).
         """
         urn = Urn(remote_path, directory=True)
         if await local_path.exists():
@@ -539,16 +545,35 @@ class Client:
 
         await local_path.mkdir(parents=True)
 
-        for resource_path in await self.list_files(urn.path()):
-            if Urn.compare_path(urn.path(), resource_path):
-                continue
-            _urn = Urn(resource_path)
-            _local_path = Path(local_path) / _urn.filename()
-            await self.download(
-                local_path=_local_path,
-                remote_path=resource_path,
-                progress=progress,
-            )
+        resources = [
+            resource_path
+            for resource_path in await self.list_files(urn.path())
+            if not Urn.compare_path(urn.path(), resource_path)
+        ]
+
+        if concurrency < 2:
+            for resource_path in resources:
+                _urn = Urn(resource_path)
+                _local_path = Path(local_path) / _urn.filename()
+                await self.download(
+                    local_path=_local_path,
+                    remote_path=resource_path,
+                    progress=progress,
+                )
+        else:
+            semaphore = asyncio.Semaphore(concurrency)
+
+            async def _download_one(resource_path: str) -> None:
+                async with semaphore:
+                    _urn = Urn(resource_path)
+                    _local_path = Path(local_path) / _urn.filename()
+                    await self.download(
+                        local_path=_local_path,
+                        remote_path=resource_path,
+                        progress=progress,
+                    )
+
+            await asyncio.gather(*[_download_one(rp) for rp in resources])
 
     async def download_file(
         self,
@@ -623,6 +648,7 @@ class Client:
         local_path: Path,
         progress: Callable[[int, int | None], Coroutine[Any, Any, None] | None]
         | None = None,
+        concurrency: int = 1,
     ) -> None:
         """Upload resource to remote path on WebDAV server.
 
@@ -635,12 +661,15 @@ class Client:
                 The function must take *(current, total)* as positional arguments (look at Other Parameters below for a
                 detailed description) and will be called back each time a new file chunk has been successfully
                 transmitted. Example def progress_update(current, total, *args) ...
+        :param concurrency: the maximum number of concurrent file transfers. Defaults to 1 (sequential).
+                Only applies to directory uploads.
         """
         if await local_path.is_dir():
             await self.upload_directory(
                 local_path=local_path,
                 remote_path=remote_path,
                 progress=progress,
+                concurrency=concurrency,
             )
         else:
             await self.upload_file(
@@ -655,6 +684,7 @@ class Client:
         local_path: Path,
         progress: Callable[[int, int | None], Coroutine[Any, Any, None] | None]
         | None = None,
+        concurrency: int = 1,
     ) -> None:
         """Upload directory to remote path on WebDAV server.
 
@@ -667,6 +697,7 @@ class Client:
                 The function must take *(current, total)* as positional arguments (look at Other Parameters below for a
                 detailed description) and will be called back each time a new file chunk has been successfully
                 transmitted. Example def progress_update(current, total, *args) ...
+        :param concurrency: the maximum number of concurrent file transfers. Defaults to 1 (sequential).
         """
         urn = Urn(remote_path, directory=True)
         if not urn.is_dir():
@@ -680,14 +711,31 @@ class Client:
 
         await self.mkdir(remote_path)
 
+        resources: list[tuple[str, Path]] = []
         async for local_resource in local_path.iterdir():
             _remote_path = f"{urn.path()}{local_resource.name}"
             _local_path = local_path / local_resource.name
-            await self.upload(
-                local_path=_local_path,
-                remote_path=_remote_path,
-                progress=progress,
-            )
+            resources.append((_remote_path, _local_path))
+
+        if concurrency < 2:
+            for _remote_path, _local_path in resources:
+                await self.upload(
+                    local_path=_local_path,
+                    remote_path=_remote_path,
+                    progress=progress,
+                )
+        else:
+            semaphore = asyncio.Semaphore(concurrency)
+
+            async def _upload_one(rpath: str, lpath: Path) -> None:
+                async with semaphore:
+                    await self.upload(
+                        local_path=lpath,
+                        remote_path=rpath,
+                        progress=progress,
+                    )
+
+            await asyncio.gather(*[_upload_one(rp, lp) for rp, lp in resources])
 
     async def upload_file(
         self,
