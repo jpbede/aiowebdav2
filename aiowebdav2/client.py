@@ -198,6 +198,13 @@ class Client:
         """
         return f"{unquote(self._options.root)}{urn.path()}"
 
+    def _get_auth(self) -> BasicAuth | None:
+        if self._options.token or self._session.auth:
+            return None
+        if self._username and self._password:
+            return BasicAuth(self._username, self._password, encoding="utf-8")
+        return None
+
     async def execute_request(
         self,
         action: str,
@@ -233,10 +240,7 @@ class Client:
             response = await self._session.request(
                 method=method,
                 url=url,
-                auth=BasicAuth(self._username, self._password, encoding="utf-8")
-                if (not self._options.token and not self._session.auth)
-                and (self._username and self._password)
-                else None,
+                auth=self._get_auth(),
                 headers=self.get_headers(action, headers_ext),
                 timeout=timeout or self._options.timeout,
                 ssl=self._options.verify_ssl,
@@ -301,14 +305,7 @@ class Client:
                  `path`: path of resource.
 
         """
-        headers = {}
-        if recursive is True:
-            headers = {"Depth": "infinity"}
-        directory_urn = Urn(remote_path, directory=True)
-        path = Urn.normalize_path(self.get_full_path(directory_urn))
-        response = await self.execute_request(
-            action="list", path=directory_urn.path(), headers_ext=headers
-        )
+        path, response = await self._list_raw(remote_path, recursive=recursive)
         urns = WebDavXmlUtils.parse_get_list_response(await response.read())
 
         return [
@@ -331,7 +328,18 @@ class Client:
                     `modified`: date of resource modification, `etag`: etag of resource, `content_type`: content type of
                     resource, `isdir`: type of resource, `path`: path of resource.
         """
-        headers = {}
+        path, response = await self._list_raw(remote_path, recursive=recursive)
+        subfiles = WebDavXmlUtils.parse_get_list_info_response(await response.read())
+        return [
+            subfile
+            for subfile in subfiles
+            if Urn.compare_path(path, str(subfile.get("path", ""))) is False
+        ]
+
+    async def _list_raw(
+        self, remote_path: str, *, recursive: bool = False
+    ) -> tuple[str, ClientResponse]:
+        headers: dict[str, str] = {}
         if recursive is True:
             headers = {"Depth": "infinity"}
         directory_urn = Urn(remote_path, directory=True)
@@ -339,12 +347,7 @@ class Client:
         response = await self.execute_request(
             action="list", path=directory_urn.path(), headers_ext=headers
         )
-        subfiles = WebDavXmlUtils.parse_get_list_info_response(await response.read())
-        return [
-            subfile
-            for subfile in subfiles
-            if Urn.compare_path(path, str(subfile.get("path", ""))) is False
-        ]
+        return path, response
 
     async def list_with_properties(
         self,
@@ -446,9 +449,7 @@ class Client:
         current = 0
 
         if progress is not None:
-            ret = progress(current, total)
-            if inspect.isawaitable(ret):
-                await ret
+            await self._call_progress(progress, current, total)
 
         async for chunk in _iter_content(response, self._options.chunk_size):
             write_ret = sink(chunk)
@@ -457,9 +458,7 @@ class Client:
             current += len(chunk)
 
             if progress is not None:
-                ret = progress(current, total)
-                if inspect.isawaitable(ret):
-                    await ret
+                await self._call_progress(progress, current, total)
 
     async def download_from(
         self,
@@ -670,11 +669,11 @@ class Client:
         if not urn.is_dir():
             raise OptionNotValidError(name="remote_path", value=remote_path)
 
-        if not await local_path.is_dir():
-            raise OptionNotValidError(name="local_path", value=str(local_path))
-
         if not await local_path.exists():
             raise LocalResourceNotFoundError(str(local_path))
+
+        if not await local_path.is_dir():
+            raise OptionNotValidError(name="local_path", value=str(local_path))
 
         await self.mkdir(remote_path)
 
@@ -727,33 +726,22 @@ class Client:
             async def read_in_chunks(
                 file_object: aiofiles.threadpool.binary.AsyncBufferedIOBase,
             ) -> AsyncIterable[bytes]:
-                if callable(progress):
-                    ret = progress(0, total)
-                    if inspect.isawaitable(ret):
-                        await ret
+                if progress is not None:
+                    await self._call_progress(progress, 0, total)
                 current = 0
 
                 while current < total:
                     data = await file_object.read(self._options.chunk_size)
-                    if callable(progress):
-                        ret = progress(current, total)  # call to progress function
-                        if inspect.isawaitable(ret):
-                            await ret
+                    if progress is not None:
+                        await self._call_progress(progress, current, total)
                     current += len(data)
                     if not data:
                         break
                     yield data
 
-            if callable(progress):
-                await self.execute_request(
-                    action="upload", path=urn.path(), data=read_in_chunks(local_file)
-                )
-            else:
-                await self.execute_request(
-                    action="upload",
-                    path=urn.path(),
-                    data=local_file,
-                )
+            await self.execute_request(
+                action="upload", path=urn.path(), data=read_in_chunks(local_file)
+            )
 
     async def copy(
         self, remote_path_from: str, remote_path_to: str, depth: int = 1
@@ -1110,6 +1098,16 @@ class Client:
 
         if not await local_directory.is_dir():
             raise OptionNotValidError(name="local_path", value=str(local_directory))
+
+    @staticmethod
+    async def _call_progress(
+        progress: Callable[[int, int | None], None | Awaitable[None]],
+        current: int,
+        total: int | None,
+    ) -> None:
+        ret = progress(current, total)
+        if inspect.isawaitable(ret):
+            await ret
 
     async def close(self) -> None:
         """Close the connection to WebDAV server."""
