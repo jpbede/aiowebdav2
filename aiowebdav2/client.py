@@ -1010,7 +1010,7 @@ class Client:
         local_resource_names = [item.name async for item in local_directory.iterdir()]
 
         paths = await self.list_files(urn.path())
-        remote_resource_names = _prune_paths(paths, remote_directory)
+        remote_resource_names = _prune_paths(paths, urn.path())
 
         for remote_resource_name in remote_resource_names:
             if urn.path().endswith(remote_resource_name):
