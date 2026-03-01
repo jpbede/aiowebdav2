@@ -1,5 +1,7 @@
 """Exceptions for aiowebdav2."""
 
+import warnings
+
 
 class WebDavError(Exception):
     """Base class for all webdav exceptions."""
@@ -104,7 +106,16 @@ class NoConnectionError(WebDavError):
         return f"No connection with {self.hostname}"
 
 
-NotConnectionError = NoConnectionError
+def __getattr__(name: str) -> type:
+    if name == "NotConnectionError":
+        warnings.warn(
+            "NotConnectionError is deprecated, use NoConnectionError instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return NoConnectionError
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
 
 
 class ResponseErrorCodeError(WebDavError):

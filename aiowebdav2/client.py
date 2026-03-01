@@ -94,12 +94,12 @@ class Client:
         "get_property": {
             "Accept": "*/*",
             "Depth": "0",
-            "Content-Type": "application/x-www-form-urlencoded",
+            "Content-Type": "text/xml",
         },
         "set_property": {
             "Accept": "*/*",
             "Depth": "0",
-            "Content-Type": "application/x-www-form-urlencoded",
+            "Content-Type": "text/xml",
         },
     }
 
@@ -123,10 +123,6 @@ class Client:
         "set_property": "PROPPATCH",
         "lock": "LOCK",
         "unlock": "UNLOCK",
-    }
-
-    meta_xmlns: ClassVar[dict[str, str]] = {
-        "https://webdav.yandex.ru": "urn:yandex:disk:meta",
     }
 
     _close_session: bool = False
@@ -519,10 +515,10 @@ class Client:
         local_path: Path,
         progress: Callable[[int, int | None], Coroutine[Any, Any, None] | None]
         | None = None,
+        *,
+        overwrite: bool = True,
     ) -> None:
         """Download directory and downloads all nested files and directories from remote WebDAV to local.
-
-        If there is something on local path it deletes directories and files then creates new.
 
         :param remote_path: the path to directory for downloading form WebDAV server.
         :param local_path: the path to local directory for saving downloaded files and directories.
@@ -530,9 +526,14 @@ class Client:
                 The function must take *(current, total)* as positional arguments (look at Other Parameters below for a
                 detailed description) and will be called back each time a new file chunk has been successfully
                 transmitted. Example def progress_update(current, total, *args) ...
+        :param overwrite: if True (default), delete existing local directory before downloading.
+                If False, raise FileExistsError when the local directory already exists.
         """
         urn = Urn(remote_path, directory=True)
         if await local_path.exists():
+            if not overwrite:
+                msg = f"Local directory already exists: {local_path}"
+                raise FileExistsError(msg)
             await asyncio.to_thread(shutil.rmtree, str(local_path))
 
         await local_path.mkdir(parents=True)
@@ -1247,10 +1248,6 @@ class LockClient(Client):
         headers["Lock-Token"] = self.__lock_token
         headers["If"] = f"({self.__lock_token})"
         return headers
-
-    async def __aenter__(self) -> Self:
-        """Async enter."""
-        return await super().__aenter__()
 
     async def __aexit__(self, *_exc_info: object) -> None:
         """Async exit."""
