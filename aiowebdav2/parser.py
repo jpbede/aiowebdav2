@@ -153,7 +153,7 @@ class WebDavXmlUtils:
         }
         info = {}
         for name, value in find_attributes.items():
-            info[name] = str(response.findtext(value)).strip()
+            info[name] = (response.findtext(value) or "").strip()
         return info
 
     @staticmethod
