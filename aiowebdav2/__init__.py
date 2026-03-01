@@ -1,6 +1,50 @@
 """Python3 WebDAV client."""
 
-from .client import Client
+from .client import Client, ClientOptions, LockClient
+from .exceptions import (
+    AccessDeniedError,
+    CertificateNotValidError,
+    ConflictError,
+    ConnectionExceptionError,
+    LocalResourceNotFoundError,
+    MethodNotSupportedError,
+    NoConnectionError,
+    NotConnectionError,
+    NotEnoughSpaceError,
+    NotFoundError,
+    NotValidError,
+    OptionNotValidError,
+    RemoteParentNotFoundError,
+    RemoteResourceNotFoundError,
+    ResourceLockedError,
+    ResponseErrorCodeError,
+    UnauthorizedError,
+    WebDavError,
+)
 from .models import Property, PropertyRequest
 
-__all__ = ["Client", "Property", "PropertyRequest"]
+__all__ = [
+    "AccessDeniedError",
+    "CertificateNotValidError",
+    "Client",
+    "ClientOptions",
+    "ConflictError",
+    "ConnectionExceptionError",
+    "LocalResourceNotFoundError",
+    "LockClient",
+    "MethodNotSupportedError",
+    "NoConnectionError",
+    "NotConnectionError",
+    "NotEnoughSpaceError",
+    "NotFoundError",
+    "NotValidError",
+    "OptionNotValidError",
+    "Property",
+    "PropertyRequest",
+    "RemoteParentNotFoundError",
+    "RemoteResourceNotFoundError",
+    "ResourceLockedError",
+    "ResponseErrorCodeError",
+    "UnauthorizedError",
+    "WebDavError",
+]

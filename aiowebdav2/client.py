@@ -45,9 +45,6 @@ from .urn import Urn
 
 _LOGGER = logging.getLogger(__name__)
 
-CONST_ACCEPT_ALL = "Accept: */*"
-CONST_DEPTH_1 = "Depth: 1"
-CONST_DEPTH_0 = "Depth: 0"
 DEFAULT_ROOT = "/"
 
 
@@ -57,6 +54,10 @@ async def _iter_content(
     """Async generator to iterate over response content by chunks."""
     while chunk := await response.content.read(chunk_size):
         yield chunk
+
+
+def _prune_paths(src: list[str], exp: str) -> list[str]:
+    return [sub(exp, "", item) for item in src]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -79,25 +80,25 @@ class Client:
     """The client for WebDAV servers provides an ability to control files on remote WebDAV server."""
 
     # HTTP headers for different actions
-    default_http_header: ClassVar[dict[str, list[str]]] = {
-        "list": [CONST_ACCEPT_ALL, CONST_DEPTH_1],
-        "free": [CONST_ACCEPT_ALL, CONST_DEPTH_0, "Content-Type: text/xml"],
-        "copy": [CONST_ACCEPT_ALL],
-        "move": [CONST_ACCEPT_ALL],
-        "mkdir": [CONST_ACCEPT_ALL, "Connection: Keep-Alive"],
-        "clean": [CONST_ACCEPT_ALL, "Connection: Keep-Alive"],
-        "check": [CONST_ACCEPT_ALL, CONST_DEPTH_0],
-        "info": [CONST_ACCEPT_ALL, CONST_DEPTH_1],
-        "get_property": [
-            CONST_ACCEPT_ALL,
-            CONST_DEPTH_0,
-            "Content-Type: application/x-www-form-urlencoded",
-        ],
-        "set_property": [
-            CONST_ACCEPT_ALL,
-            CONST_DEPTH_0,
-            "Content-Type: application/x-www-form-urlencoded",
-        ],
+    default_http_header: ClassVar[dict[str, dict[str, str]]] = {
+        "list": {"Accept": "*/*", "Depth": "1"},
+        "free": {"Accept": "*/*", "Depth": "0", "Content-Type": "text/xml"},
+        "copy": {"Accept": "*/*"},
+        "move": {"Accept": "*/*"},
+        "mkdir": {"Accept": "*/*", "Connection": "Keep-Alive"},
+        "clean": {"Accept": "*/*", "Connection": "Keep-Alive"},
+        "check": {"Accept": "*/*", "Depth": "0"},
+        "info": {"Accept": "*/*", "Depth": "1"},
+        "get_property": {
+            "Accept": "*/*",
+            "Depth": "0",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        "set_property": {
+            "Accept": "*/*",
+            "Depth": "0",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
     }
 
     # mapping of actions to WebDAV methods
@@ -151,7 +152,9 @@ class Client:
 
         self._session = self._options.session or ClientSession()
         self._close_session = not bool(self._options.session)
-        self.http_header = self.default_http_header.copy()
+        self.http_header = {
+            key: dict(value) for key, value in self.default_http_header.items()
+        }
         self.requests = self.default_requests.copy()
 
         self._base_url_path = yarl.URL(self._url).path
@@ -159,31 +162,21 @@ class Client:
             self._base_url_path += Urn.separate
 
     def get_headers(
-        self, action: str, headers_ext: list[str] | None = None
+        self, action: str, headers_ext: dict[str, str] | None = None
     ) -> dict[str, str]:
         """Return HTTP headers of specified WebDAV actions.
 
         :param action: the identifier of action.
-        :param headers_ext: (optional) the addition headers list witch sgould be added to basic HTTP headers for
+        :param headers_ext: (optional) the addition headers dict which should be added to basic HTTP headers for
                             the specified action.
         :return: the dictionary of headers for specified action.
         """
-        if action in self.http_header:
-            try:
-                headers = self.http_header[action].copy()
-            except AttributeError:
-                headers = self.http_header[action][:]
-        else:
-            headers = []
-
+        headers = dict(self.http_header.get(action, {}))
         if headers_ext:
-            headers.extend(headers_ext)
-
+            headers.update(headers_ext)
         if self._options.token:
-            webdav_token = f"Authorization: Bearer {self._options.token}"
-            headers.append(webdav_token)
-
-        return dict([i.split(":", 1) for i in headers])
+            headers["Authorization"] = f"Bearer {self._options.token}"
+        return headers
 
     def get_url(self, path: str) -> str:
         """Generate url by uri path.
@@ -214,7 +207,7 @@ class Client:
         | IO[bytes]
         | str
         | None = None,
-        headers_ext: list[str] | None = None,
+        headers_ext: dict[str, str] | None = None,
         *,
         timeout: ClientTimeout | None = None,
     ) -> ClientResponse:
@@ -224,7 +217,7 @@ class Client:
         :param path: the path to resource for action
         :param data: (optional) Dictionary or list of tuples ``[(key, value)]`` (will be form-encoded), bytes,
                      or file-like object to send in the body of the :class:`Request`.
-        :param headers_ext: (optional) the addition headers list witch should be added to basic HTTP headers for
+        :param headers_ext: (optional) the addition headers dict which should be added to basic HTTP headers for
                             the specified action.
         :param timeout: (optional) the timeout for the request.
         :return: HTTP response of request.
@@ -306,9 +299,9 @@ class Client:
                  `path`: path of resource.
 
         """
-        headers = []
+        headers = {}
         if recursive is True:
-            headers = ["Depth:infinity"]
+            headers = {"Depth": "infinity"}
         directory_urn = Urn(remote_path, directory=True)
         path = Urn.normalize_path(self.get_full_path(directory_urn))
         response = await self.execute_request(
@@ -336,9 +329,9 @@ class Client:
                     `modified`: date of resource modification, `etag`: etag of resource, `content_type`: content type of
                     resource, `isdir`: type of resource, `path`: path of resource.
         """
-        headers = []
+        headers = {}
         if recursive is True:
-            headers = ["Depth:infinity"]
+            headers = {"Depth": "infinity"}
         directory_urn = Urn(remote_path, directory=True)
         path = Urn.normalize_path(self.get_full_path(directory_urn))
         response = await self.execute_request(
@@ -440,6 +433,32 @@ class Client:
         )
         return _iter_content(response, self._options.chunk_size)
 
+    async def _stream_with_progress(
+        self,
+        response: ClientResponse,
+        sink: Callable[[bytes], Any],
+        progress: Callable[[int, int | None], None | Awaitable[None]] | None = None,
+    ) -> None:
+        clen_str = response.headers.get("content-length")
+        total = int(clen_str) if clen_str is not None else None
+        current = 0
+
+        if progress is not None:
+            ret = progress(current, total)
+            if asyncio.iscoroutine(ret):
+                await ret
+
+        async for chunk in _iter_content(response, self._options.chunk_size):
+            write_ret = sink(chunk)
+            if asyncio.iscoroutine(write_ret):
+                await write_ret
+            current += len(chunk)
+
+            if progress is not None:
+                ret = progress(current, total)
+                if asyncio.iscoroutine(ret):
+                    await ret
+
     async def download_from(
         self,
         buff: IO[bytes] | AsyncWriteBuffer,
@@ -459,25 +478,7 @@ class Client:
         """
         urn = Urn(remote_path)
         response = await self.execute_request(action="download", path=urn.path())
-        clen_str = response.headers.get("content-length")
-        total = int(clen_str) if clen_str is not None else None
-        current = 0
-
-        if callable(progress):
-            ret = progress(current, total)  # zero call
-            if asyncio.iscoroutine(ret):
-                await ret
-
-        async for chunk in _iter_content(response, self._options.chunk_size):
-            write_ret = buff.write(chunk)
-            if asyncio.iscoroutine(write_ret):
-                await write_ret
-            current += self._options.chunk_size
-
-            if callable(progress):
-                ret = progress(current, total)
-                if asyncio.iscoroutine(ret):
-                    await ret
+        await self._stream_with_progress(response, buff.write, progress)
 
     async def download(
         self,
@@ -530,7 +531,7 @@ class Client:
         """
         urn = Urn(remote_path, directory=True)
         if await local_path.exists():
-            shutil.rmtree(local_path)
+            await asyncio.to_thread(shutil.rmtree, str(local_path))
 
         await local_path.mkdir(parents=True)
 
@@ -571,22 +572,7 @@ class Client:
 
         async with aiofiles.open(local_path, "wb") as local_file:
             response = await self.execute_request("download", urn.path())
-            clen_str = response.headers.get("content-length")
-            total = int(clen_str) if clen_str is not None else None
-            current = 0
-
-            if callable(progress):
-                ret = progress(current, total)  # zero call
-                if asyncio.iscoroutine(ret):
-                    await ret
-
-            async for block in _iter_content(response, self._options.chunk_size):
-                await local_file.write(block)
-                current += self._options.chunk_size
-                if callable(progress):
-                    ret = progress(current, total)
-                    if asyncio.iscoroutine(ret):
-                        await ret
+            await self._stream_with_progress(response, local_file.write, progress)
 
     async def upload_iter(
         self,
@@ -609,9 +595,9 @@ class Client:
         if urn.is_dir():
             raise OptionNotValidError(name="remote_path", value=remote_path)
 
-        headers = []
+        headers: dict[str, str] = {}
         if content_length is not None:
-            headers.append(f"Content-Length: {content_length}")
+            headers["Content-Length"] = str(content_length)
 
         try:
             await self.execute_request(
@@ -781,9 +767,9 @@ class Client:
         urn_from = Urn(remote_path_from)
         urn_to = Urn(remote_path_to)
 
-        headers = [f"Destination: {self.get_url(urn_to.path())}"]
+        headers = {"Destination": self.get_url(urn_to.path())}
         if await self.is_dir(urn_from.path()):
-            headers.append(f"Depth: {depth}")
+            headers["Depth"] = str(depth)
         await self.execute_request(
             action="copy", path=urn_from.path(), headers_ext=headers
         )
@@ -802,12 +788,13 @@ class Client:
         urn_from = Urn(remote_path_from)
         urn_to = Urn(remote_path_to)
 
-        header_destination = f"Destination: {self.get_url(urn_to.path())}"
-        header_overwrite = f"Overwrite: {'T' if overwrite else 'F'}"
         await self.execute_request(
             action="move",
             path=urn_from.path(),
-            headers_ext=[header_destination, header_overwrite],
+            headers_ext={
+                "Destination": self.get_url(urn_to.path()),
+                "Overwrite": "T" if overwrite else "F",
+            },
         )
 
     async def clean(self, remote_path: str) -> None:
@@ -853,7 +840,7 @@ class Client:
         """
         urn = Urn(remote_path)
         response = await self.execute_request(
-            action="info", path=urn.path(), headers_ext=["Depth: 0"]
+            action="info", path=urn.path(), headers_ext={"Depth": "0"}
         )
         path = self.get_full_path(urn)
         return WebDavXmlUtils.parse_is_dir_response(
@@ -935,7 +922,7 @@ class Client:
         """
         headers_ext = None
         if timeout > 0:
-            headers_ext = [f"Timeout: Second-{timeout}"]
+            headers_ext = {"Timeout": f"Second-{timeout}"}
 
         response = await self.execute_request(
             action="lock",
@@ -976,10 +963,6 @@ class Client:
         :param local_directory: the path to local directory for pushing.
         :return: True if local directory is more recent than remote directory, False otherwise.
         """
-
-        def prune(src: list[str], exp: str) -> list[str]:
-            return [sub(exp, "", item) for item in src]
-
         updated = False
         urn = Urn(remote_directory, directory=True)
         await self._validate_remote_directory(urn)
@@ -987,7 +970,7 @@ class Client:
 
         paths = await self.list_files(urn.path())
         expression = f"^{urn.path()}"
-        remote_resource_names = prune(paths, expression)
+        remote_resource_names = _prune_paths(paths, expression)
 
         async for local_resource_name in local_directory.iterdir():
             local_path = local_directory / local_resource_name
@@ -1003,7 +986,7 @@ class Client:
             else:
                 if (
                     local_resource_name in remote_resource_names
-                    and not self.is_local_more_recent(local_path, remote_path)
+                    and not await self.is_local_more_recent(local_path, remote_path)
                 ):
                     continue
                 await self.upload_file(remote_path=remote_path, local_path=local_path)
@@ -1017,10 +1000,6 @@ class Client:
         :param local_directory: the path to local directory for pulling.
         :return: True if remote directory is more recent than local directory, False otherwise.
         """
-
-        def prune(src: list[str], exp: str) -> list[str]:
-            return [sub(exp, "", item) for item in src]
-
         updated = False
         urn = Urn(remote_directory, directory=True)
         await self._validate_remote_directory(urn)
@@ -1030,7 +1009,7 @@ class Client:
 
         paths = await self.list_files(urn.path())
         expression = f"^{remote_directory}"
-        remote_resource_names = prune(paths, expression)
+        remote_resource_names = _prune_paths(paths, expression)
 
         for remote_resource_name in remote_resource_names:
             if urn.path().endswith(remote_resource_name):
@@ -1050,7 +1029,7 @@ class Client:
             else:
                 if (
                     remote_resource_name in local_resource_names
-                    and self.is_local_more_recent(local_path, remote_path)
+                    and await self.is_local_more_recent(local_path, remote_path)
                 ):
                     continue
 
@@ -1124,11 +1103,11 @@ class Client:
     @staticmethod
     async def _validate_local_directory(local_directory: Path) -> None:
         """Validate local directory."""
-        if not await local_directory.is_dir():
-            raise OptionNotValidError(name="local_path", value=str(local_directory))
-
         if not await local_directory.exists():
             raise LocalResourceNotFoundError(str(local_directory))
+
+        if not await local_directory.is_dir():
+            raise OptionNotValidError(name="local_path", value=str(local_directory))
 
     async def close(self) -> None:
         """Close the connection to WebDAV server."""
@@ -1204,19 +1183,19 @@ class Resource:
 
     async def read_from(self, buff: IO[bytes] | AsyncWriteBuffer) -> None:
         """Read the resource to buffer."""
-        await self.client.upload_iter(buff=buff, remote_path=self.urn.path())
+        await self.client.download_from(buff=buff, remote_path=self.urn.path())
 
     async def read(self, local_path: Path) -> None:
         """Read the resource to local path."""
-        await self.client.upload(local_path=local_path, remote_path=self.urn.path())
+        await self.client.download(local_path=local_path, remote_path=self.urn.path())
 
     async def write_to(self, buff: IO[bytes] | AsyncWriteBuffer) -> None:
         """Write the buffer to the resource."""
-        await self.client.download_from(buff=buff, remote_path=self.urn.path())
+        await self.client.upload_iter(buff=buff, remote_path=self.urn.path())
 
     async def write(self, local_path: Path) -> None:
         """Write the local path to the resource."""
-        await self.client.download(local_path=local_path, remote_path=self.urn.path())
+        await self.client.upload(local_path=local_path, remote_path=self.urn.path())
 
     async def publish(self) -> None:
         """Publish the resource."""
@@ -1259,7 +1238,7 @@ class LockClient(Client):
         self.__lock_token = lock_token
 
     def get_headers(
-        self, action: str, headers_ext: list[str] | None = None
+        self, action: str, headers_ext: dict[str, str] | None = None
     ) -> dict[str, str]:
         """Get headers for request to WebDAV server."""
         headers = super().get_headers(action, headers_ext)
@@ -1269,10 +1248,9 @@ class LockClient(Client):
 
     async def __aenter__(self) -> Self:
         """Async enter."""
-        await self.execute_request(action="lock", path=self.__lock_path)
         return await super().__aenter__()
 
     async def __aexit__(self, *_exc_info: object) -> None:
         """Async exit."""
-        await super().__aexit__()
         await self.execute_request(action="unlock", path=self.__lock_path)
+        await super().__aexit__()

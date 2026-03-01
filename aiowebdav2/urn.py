@@ -16,6 +16,11 @@ class Urn:
         for expression in expressions:
             self._path = sub(expression, Urn.separate, self._path)
 
+        while "/../" in self._path:
+            self._path = sub(r"/[^/]+/\.\./", "/", self._path)
+        if self._path.endswith("/.."):
+            self._path = sub(r"/[^/]+/\.\.$", "/", self._path)
+
         if not self._path.startswith(Urn.separate):
             self._path = f"{Urn.separate}{self._path}"
 
