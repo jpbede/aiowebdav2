@@ -1,10 +1,10 @@
 """Tests for the resource module."""
 
 import io
+from pathlib import Path
 from typing import Any
 
 from aioresponses import aioresponses
-from anyio import Path as AnyioPath
 
 from aiowebdav2.client import Client
 from aiowebdav2.models import PropertyRequest
@@ -151,12 +151,12 @@ async def test_resource_read_write_paths(
         status=201,
     )
 
-    local_path = AnyioPath(tmp_path) / "test.txt"
+    local_path = Path(tmp_path) / "test.txt"
     resource = client.resource("/test_dir/test.txt")
     await resource.read(local_path=local_path)
-    assert (await local_path.read_bytes()) == b"file content"
+    assert (local_path.read_bytes()) == b"file content"
 
-    await local_path.write_bytes(b"upload")
+    local_path.write_bytes(b"upload")
     await resource.write(local_path=local_path)
 
 

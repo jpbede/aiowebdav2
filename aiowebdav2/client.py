@@ -5,6 +5,7 @@ from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable, C
 from dataclasses import dataclass
 import inspect
 import logging
+from pathlib import Path
 import shutil
 from typing import IO, Any, ClassVar, Self
 from urllib.parse import unquote
@@ -19,7 +20,6 @@ from aiohttp import (
     ClientTimeout,
 )
 from aiohttp.client import DEFAULT_TIMEOUT
-from anyio import Path
 from dateutil.parser import parse as dateutil_parse
 import yarl
 
@@ -565,15 +565,15 @@ class Client:
             raise OptionNotValidError(name="concurrency", value=str(concurrency))
 
         urn = Urn(remote_path, directory=True)
-        if await local_path.exists():
-            if not await local_path.is_dir():
+        if await asyncio.to_thread(local_path.exists):
+            if not await asyncio.to_thread(local_path.is_dir):
                 raise OptionNotValidError(name="local_path", value=str(local_path))
             if not overwrite:
                 msg = f"Local directory already exists: {local_path}"
                 raise FileExistsError(msg)
             await asyncio.to_thread(shutil.rmtree, str(local_path))
 
-        await local_path.mkdir(parents=True)
+        await asyncio.to_thread(local_path.mkdir, parents=True)
 
         resources = [
             resource_path
@@ -630,7 +630,7 @@ class Client:
                  Example def progress_update(current, total, *args) ...
         """
         urn = Urn(remote_path)
-        if await local_path.is_dir():
+        if await asyncio.to_thread(local_path.is_dir):
             raise OptionNotValidError(name="local_path", value=str(local_path))
 
         async with aiofiles.open(local_path, "wb") as local_file:
@@ -700,7 +700,7 @@ class Client:
         :param concurrency: the maximum number of concurrent file transfers. Defaults to 1 (sequential).
                 Only applies to directory uploads.
         """
-        if await local_path.is_dir():
+        if await asyncio.to_thread(local_path.is_dir):
             await self.upload_directory(
                 local_path=local_path,
                 remote_path=remote_path,
@@ -752,16 +752,18 @@ class Client:
         if not urn.is_dir():
             raise OptionNotValidError(name="remote_path", value=remote_path)
 
-        if not await local_path.exists():
+        if not await asyncio.to_thread(local_path.exists):
             raise LocalResourceNotFoundError(str(local_path))
 
-        if not await local_path.is_dir():
+        if not await asyncio.to_thread(local_path.is_dir):
             raise OptionNotValidError(name="local_path", value=str(local_path))
 
         await self.mkdir(remote_path)
 
         resources: list[tuple[str, Path]] = []
-        async for local_resource in local_path.iterdir():
+        for local_resource in await asyncio.to_thread(
+            lambda: list(local_path.iterdir())
+        ):
             _remote_path = f"{urn.path()}{local_resource.name}"
             _local_path = local_path / local_resource.name
             resources.append((_remote_path, _local_path))
@@ -811,21 +813,21 @@ class Client:
                 transmitted. Example def progress_update(current, total, *args) ...
         :param force:  if the directory isn't there it will creat the directory.
         """
-        if not await local_path.exists():
+        if not await asyncio.to_thread(local_path.exists):
             raise LocalResourceNotFoundError(str(local_path))
 
         urn = Urn(remote_path)
         if urn.is_dir():
             raise OptionNotValidError(name="remote_path", value=remote_path)
 
-        if await local_path.is_dir():
+        if await asyncio.to_thread(local_path.is_dir):
             raise OptionNotValidError(name="local_path", value=str(local_path))
 
         if force is True:
             await self.mkdir(urn.parent(), recursive=True)
 
         async with aiofiles.open(local_path, "rb") as local_file:
-            total = (await local_path.stat()).st_size
+            total = (await asyncio.to_thread(local_path.stat)).st_size
 
             async def read_in_chunks(
                 file_object: aiofiles.threadpool.binary.AsyncBufferedIOBase,
@@ -1065,11 +1067,13 @@ class Client:
         paths = await self.list_files(urn.path())
         remote_resource_names = _prune_paths(paths, urn.path())
 
-        async for local_resource_name in local_directory.iterdir():
+        for local_resource_name in await asyncio.to_thread(
+            lambda: list(local_directory.iterdir())
+        ):
             local_path = local_directory / local_resource_name
             remote_path = f"{urn.path()}{local_resource_name}"
 
-            if await local_path.is_dir():
+            if await asyncio.to_thread(local_path.is_dir):
                 if not await self.check(remote_path=remote_path):
                     await self.mkdir(remote_path=remote_path)
                 result = await self.push(
@@ -1099,7 +1103,10 @@ class Client:
         await self._validate_remote_directory(urn)
         await self._validate_local_directory(local_directory)
 
-        local_resource_names = [item.name async for item in local_directory.iterdir()]
+        local_resource_names = [
+            item.name
+            for item in await asyncio.to_thread(lambda: list(local_directory.iterdir()))
+        ]
 
         paths = await self.list_files(urn.path())
         remote_resource_names = _prune_paths(paths, urn.path())
@@ -1112,9 +1119,9 @@ class Client:
             remote_urn = Urn(remote_path)
 
             if remote_urn.path().endswith("/"):
-                if not await local_path.exists():
+                if not await asyncio.to_thread(local_path.exists):
                     updated = True
-                    await local_path.mkdir()
+                    await asyncio.to_thread(local_path.mkdir)
                 result = await self.pull(
                     remote_directory=remote_path, local_directory=local_path
                 )
@@ -1149,7 +1156,7 @@ class Client:
             remote_last_mod_date_unix_ts = int(
                 remote_last_mod_date_converted.timestamp()
             )
-            stat = await local_path.stat()
+            stat = await asyncio.to_thread(local_path.stat)
             local_last_mod_date_unix_ts = int(stat.st_mtime)
         except (ValueError, RuntimeWarning, KeyError):
             _LOGGER.exception(
@@ -1197,10 +1204,10 @@ class Client:
     @staticmethod
     async def _validate_local_directory(local_directory: Path) -> None:
         """Validate local directory."""
-        if not await local_directory.exists():
+        if not await asyncio.to_thread(local_directory.exists):
             raise LocalResourceNotFoundError(str(local_directory))
 
-        if not await local_directory.is_dir():
+        if not await asyncio.to_thread(local_directory.is_dir):
             raise OptionNotValidError(name="local_path", value=str(local_directory))
 
     @staticmethod
