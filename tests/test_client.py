@@ -3,13 +3,13 @@
 from collections.abc import AsyncGenerator, AsyncIterable, Callable
 import io
 import os
+from pathlib import Path
 import re
 import time
 from typing import Any
 
 import aiohttp
 from aioresponses import CallbackResult, aioresponses
-from anyio import Path as AnyioPath
 from multidict import CIMultiDict, CIMultiDictProxy
 import pytest
 import yarl
@@ -912,13 +912,13 @@ async def test_download_dispatch_file_and_dir(
         status=200,
     )
 
-    local_dir = AnyioPath(tmp_path) / "download_dir"
+    local_dir = Path(tmp_path) / "download_dir"
     await client.download("/test_dir/", local_dir)
-    assert (await (local_dir / "test.txt").read_bytes()) == b"file content"
+    assert ((local_dir / "test.txt").read_bytes()) == b"file content"
 
-    local_file = AnyioPath(tmp_path) / "test.txt"
+    local_file = Path(tmp_path) / "test.txt"
     await client.download("/test.txt", local_file)
-    assert (await local_file.read_bytes()) == b"root file"
+    assert (local_file.read_bytes()) == b"root file"
 
 
 async def test_download_directory_removes_existing(
@@ -941,19 +941,19 @@ async def test_download_directory_removes_existing(
         status=200,
     )
 
-    local_dir = AnyioPath(tmp_path) / "download_dir"
-    await local_dir.mkdir(parents=True)
-    await (local_dir / "old.txt").write_text("old")
+    local_dir = Path(tmp_path) / "download_dir"
+    local_dir.mkdir(parents=True)
+    (local_dir / "old.txt").write_text("old")
 
     await client.download_directory("/test_dir/", local_dir)
-    assert not await (local_dir / "old.txt").exists()
-    assert await (local_dir / "test.txt").exists()
+    assert not (local_dir / "old.txt").exists()
+    assert (local_dir / "test.txt").exists()
 
 
 async def test_download_file_rejects_directory(client: Client, tmp_path: Any) -> None:
     """Test download file rejects directory."""
-    local_dir = AnyioPath(tmp_path) / "target_dir"
-    await local_dir.mkdir(parents=True)
+    local_dir = Path(tmp_path) / "target_dir"
+    local_dir.mkdir(parents=True)
     with pytest.raises(OptionNotValidError):
         await client.download_file("/test.txt", local_dir)
 
@@ -962,10 +962,10 @@ async def test_upload_dispatch_file_and_dir(
     client: Client, responses: aioresponses, tmp_path: Any
 ) -> None:
     """Test upload dispatch file and dir."""
-    local_dir = AnyioPath(tmp_path) / "upload_dir"
-    await local_dir.mkdir(parents=True)
+    local_dir = Path(tmp_path) / "upload_dir"
+    local_dir.mkdir(parents=True)
     local_file = local_dir / "test.txt"
-    await local_file.write_text("content")
+    local_file.write_text("content")
     responses.add(
         "https://webdav.example.com/test_dir/",
         "MKCOL",
@@ -997,15 +997,15 @@ async def test_upload_directory_validations(
     client: Client, responses: aioresponses, tmp_path: Any
 ) -> None:
     """Test upload directory validations."""
-    local_dir = AnyioPath(tmp_path) / "local"
+    local_dir = Path(tmp_path) / "local"
     with pytest.raises(LocalResourceNotFoundError):
         await client.upload_directory("/test_dir", local_dir)
 
-    await local_dir.mkdir(parents=True)
+    local_dir.mkdir(parents=True)
     with pytest.raises(LocalResourceNotFoundError):
         await client.upload_directory("/test_dir/", local_dir / "file.txt")
 
-    missing_dir = AnyioPath(tmp_path) / "missing"
+    missing_dir = Path(tmp_path) / "missing"
     with pytest.raises(LocalResourceNotFoundError):
         await client.upload_directory("/test_dir/", missing_dir)
 
@@ -1015,7 +1015,7 @@ async def test_upload_directory_validations(
         headers={"Accept": "*/*", "Connection": "Keep-Alive"},
         status=201,
     )
-    await (local_dir / "one.txt").write_text("one")
+    (local_dir / "one.txt").write_text("one")
     responses.add(
         re.compile(r"https://webdav\.example\.com/test_dir/.+"),
         "PUT",
@@ -1029,9 +1029,9 @@ async def test_upload_directory_uses_filename_not_full_path(
     client: Client, responses: aioresponses, tmp_path: Any
 ) -> None:
     """Test upload directory constructs remote paths from filename, not full local path."""
-    local_dir = AnyioPath(tmp_path) / "upload_src"
-    await local_dir.mkdir(parents=True)
-    await (local_dir / "hello.txt").write_text("data")
+    local_dir = Path(tmp_path) / "upload_src"
+    local_dir.mkdir(parents=True)
+    (local_dir / "hello.txt").write_text("data")
 
     responses.add(
         "https://webdav.example.com/dest/",
@@ -1061,8 +1061,8 @@ async def test_upload_file_progress_and_force(
     responses: aioresponses, tmp_path: Any
 ) -> None:
     """Test upload file progress and force."""
-    local_path = AnyioPath(tmp_path) / "file.txt"
-    await local_path.write_text("content")
+    local_path = Path(tmp_path) / "file.txt"
+    local_path.write_text("content")
 
     responses.add(
         "https://webdav.example.com/test_dir/",
@@ -1107,17 +1107,17 @@ async def test_upload_file_progress_and_force(
 
 async def test_upload_file_validations(client: Client, tmp_path: Any) -> None:
     """Test upload file validations."""
-    local_missing = AnyioPath(tmp_path) / "missing.txt"
+    local_missing = Path(tmp_path) / "missing.txt"
     with pytest.raises(LocalResourceNotFoundError):
         await client.upload_file("/test.txt", local_missing)
 
-    local_dir = AnyioPath(tmp_path) / "dir"
-    await local_dir.mkdir(parents=True)
+    local_dir = Path(tmp_path) / "dir"
+    local_dir.mkdir(parents=True)
     with pytest.raises(OptionNotValidError):
         await client.upload_file("/test.txt", local_dir)
 
-    local_file = AnyioPath(tmp_path) / "file.txt"
-    await local_file.write_text("content")
+    local_file = Path(tmp_path) / "file.txt"
+    local_file.write_text("content")
     with pytest.raises(OptionNotValidError):
         await client.upload_file("/test_dir/", local_file)
 
@@ -1214,8 +1214,8 @@ async def test_is_local_more_recent(
         status=200,
         body=load_responses("get_info.xml"),
     )
-    local_path = AnyioPath(tmp_path) / "test.txt"
-    await local_path.write_text("content")
+    local_path = Path(tmp_path) / "test.txt"
+    local_path.write_text("content")
     now = time.time() + 10
     os.utime(str(local_path), (now, now))
     assert await client.is_local_more_recent(local_path, "/test_dir/test.txt")
@@ -1233,9 +1233,9 @@ async def test_is_local_more_recent_error(
         status=200,
         body=load_responses("get_info.xml"),
     )
-    local_path = AnyioPath(tmp_path) / "test.txt"
-    await local_path.write_text("content")
-    local_path = AnyioPath(tmp_path) / "missing.txt"
+    local_path = Path(tmp_path) / "test.txt"
+    local_path.write_text("content")
+    local_path = Path(tmp_path) / "missing.txt"
     with pytest.raises(FileNotFoundError):
         await client.is_local_more_recent(local_path, "/test_dir/test.txt")
 
@@ -1244,10 +1244,10 @@ async def test_push_pull_sync(
     client: Client, responses: aioresponses, tmp_path: Any
 ) -> None:
     """Test push pull sync."""
-    local_dir = AnyioPath(tmp_path) / "local"
-    await local_dir.mkdir(parents=True)
+    local_dir = Path(tmp_path) / "local"
+    local_dir.mkdir(parents=True)
     local_file = local_dir / "local.txt"
-    await local_file.write_text("content")
+    local_file.write_text("content")
 
     responses.add(
         "https://webdav.example.com/remote/",
@@ -1429,22 +1429,22 @@ async def test_download_directory_concurrent(
             status=200,
         )
 
-    local_dir = AnyioPath(tmp_path) / "concurrent_dl"
+    local_dir = Path(tmp_path) / "concurrent_dl"
     await client.download_directory("/test_dir/", local_dir, concurrency=3)
 
     for name in ("a.txt", "b.txt", "c.txt"):
-        assert await (local_dir / name).exists()
-        assert await (local_dir / name).read_text() == f"{name} content"
+        assert (local_dir / name).exists()
+        assert (local_dir / name).read_text() == f"{name} content"
 
 
 async def test_upload_directory_concurrent(
     client: Client, responses: aioresponses, tmp_path: Any
 ) -> None:
     """Test upload directory with concurrency > 1 uploads all files."""
-    local_dir = AnyioPath(tmp_path) / "concurrent_ul"
-    await local_dir.mkdir(parents=True)
+    local_dir = Path(tmp_path) / "concurrent_ul"
+    local_dir.mkdir(parents=True)
     for name in ("a.txt", "b.txt", "c.txt"):
-        await (local_dir / name).write_text(f"{name} content")
+        (local_dir / name).write_text(f"{name} content")
 
     responses.add(
         "https://webdav.example.com/test_dir/",
@@ -1487,7 +1487,7 @@ async def test_download_directory_rejects_invalid_concurrency(
     client: Client, tmp_path: Any
 ) -> None:
     """Test download_directory rejects concurrency < 1."""
-    local_dir = AnyioPath(tmp_path) / "dl"
+    local_dir = Path(tmp_path) / "dl"
     with pytest.raises(OptionNotValidError):
         await client.download_directory("/test_dir/", local_dir, concurrency=0)
     with pytest.raises(OptionNotValidError):
@@ -1498,8 +1498,8 @@ async def test_upload_directory_rejects_invalid_concurrency(
     client: Client, tmp_path: Any
 ) -> None:
     """Test upload_directory rejects concurrency < 1."""
-    local_dir = AnyioPath(tmp_path) / "ul"
-    await local_dir.mkdir(parents=True)
+    local_dir = Path(tmp_path) / "ul"
+    local_dir.mkdir(parents=True)
     with pytest.raises(OptionNotValidError):
         await client.upload_directory("/test_dir/", local_dir, concurrency=0)
     with pytest.raises(OptionNotValidError):
