@@ -122,3 +122,17 @@ def test_parse_quota_response_xml_error() -> None:
         b"<not-xml", hostname="https://example.com"
     )
     assert result == QuotaInfo(available_bytes=None, used_bytes=None)
+
+
+def test_parse_quota_response_non_numeric() -> None:
+    """Test parse_quota_response raises on non-numeric quota values."""
+    content = (
+        b'<?xml version="1.0"?>'
+        b'<d:multistatus xmlns:d="DAV:">'
+        b"<d:response><d:propstat><d:prop>"
+        b"<d:quota-available-bytes>abc</d:quota-available-bytes>"
+        b"</d:prop></d:propstat></d:response>"
+        b"</d:multistatus>"
+    )
+    with pytest.raises(MethodNotSupportedError):
+        WebDavXmlUtils.parse_quota_response(content, "https://example.com")

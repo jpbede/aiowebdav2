@@ -389,7 +389,10 @@ class Client:
         :raises MethodNotSupportedError: when the server does not support quota properties.
         """
         data = WebDavXmlUtils.create_free_space_request_content()
-        response = await self.execute_request(action="free", path="", data=data)
+        try:
+            response = await self.execute_request(action="free", path="", data=data)
+        except MethodNotSupportedError as err:
+            raise MethodNotSupportedError(name="quota", server=self._url) from err
         return WebDavXmlUtils.parse_quota_response(await response.read(), self._url)
 
     async def check(self, remote_path: str = DEFAULT_ROOT) -> bool:

@@ -157,7 +157,7 @@ class WebDavXmlUtils:
                     else None
                 ),
             )
-        except TypeError as err:
+        except (TypeError, ValueError) as err:
             raise MethodNotSupportedError(name="quota", server=hostname) from err
         except etree.XMLSyntaxError as err:
             _LOGGER.warning("Failed to parse quota response XML: %s", err)
