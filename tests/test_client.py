@@ -30,7 +30,7 @@ from aiowebdav2.exceptions import (
     ResponseErrorCodeError,
     UnauthorizedError,
 )
-from aiowebdav2.models import Property, PropertyRequest
+from aiowebdav2.models import Property, PropertyRequest, QuotaInfo
 
 from . import load_responses, upload_stream
 
@@ -338,6 +338,54 @@ async def test_free_not_supported(client: Client, responses: aioresponses) -> No
 
     with pytest.raises(MethodNotSupportedError):
         await client.free()
+
+
+async def test_quota(client: Client, responses: aioresponses) -> None:
+    """Test quota returns both available and used bytes."""
+    responses.clear()
+    responses.add(
+        "https://webdav.example.com",
+        "PROPFIND",
+        headers={"Accept": "*/*", "Depth": "0"},
+        content_type="application/xml",
+        status=200,
+        body=load_responses("free_space.xml"),
+    )
+
+    info = await client.quota()
+    assert info == QuotaInfo(available_bytes=10737417543, used_bytes=697)
+
+
+async def test_quota_not_supported(client: Client, responses: aioresponses) -> None:
+    """Test quota raises when server does not support quota properties."""
+    responses.clear()
+    responses.add(
+        "https://webdav.example.com",
+        "PROPFIND",
+        headers={"Accept": "*/*", "Depth": "0"},
+        content_type="application/xml",
+        status=200,
+        body=load_responses("free_space_not_supported.xml"),
+    )
+
+    with pytest.raises(MethodNotSupportedError):
+        await client.quota()
+
+
+async def test_quota_used_only(client: Client, responses: aioresponses) -> None:
+    """Test quota when server only provides used bytes."""
+    responses.clear()
+    responses.add(
+        "https://webdav.example.com",
+        "PROPFIND",
+        headers={"Accept": "*/*", "Depth": "0"},
+        content_type="application/xml",
+        status=200,
+        body=load_responses("quota_used_only.xml"),
+    )
+
+    info = await client.quota()
+    assert info == QuotaInfo(available_bytes=None, used_bytes=697)
 
 
 async def test_upload_iter(client: Client, responses: aioresponses) -> None:

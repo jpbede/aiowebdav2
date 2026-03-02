@@ -38,7 +38,7 @@ from .exceptions import (
     ResponseErrorCodeError,
     UnauthorizedError,
 )
-from .models import Property, PropertyRequest
+from .models import Property, PropertyRequest, QuotaInfo
 from .parser import WebDavXmlUtils
 from .typing_helper import AsyncWriteBuffer
 from .urn import Urn
@@ -378,6 +378,22 @@ class Client:
         return WebDavXmlUtils.parse_free_space_response(
             await response.read(), self._url
         )
+
+    async def quota(self) -> QuotaInfo:
+        """Return quota information (available and used space) from remote WebDAV server.
+
+        Uses the RFC 4331 quota properties: quota-available-bytes and quota-used-bytes.
+        More information you can find by link https://www.rfc-editor.org/rfc/rfc4331.html.
+
+        :return: QuotaInfo with available_bytes and used_bytes.
+        :raises MethodNotSupportedError: when the server does not support quota properties.
+        """
+        data = WebDavXmlUtils.create_free_space_request_content()
+        try:
+            response = await self.execute_request(action="free", path="", data=data)
+        except MethodNotSupportedError as err:
+            raise MethodNotSupportedError(name="quota", server=self._url) from err
+        return WebDavXmlUtils.parse_quota_response(await response.read(), self._url)
 
     async def check(self, remote_path: str = DEFAULT_ROOT) -> bool:
         """Check an existence of remote resource on WebDAV server by remote path.
