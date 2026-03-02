@@ -7,7 +7,7 @@ from urllib.parse import unquote, urlparse, urlsplit
 from lxml import etree
 
 from .exceptions import MethodNotSupportedError, RemoteResourceNotFoundError
-from .models import Property, PropertyRequest
+from .models import Property, PropertyRequest, QuotaInfo
 from .urn import Urn
 
 _LOGGER = logging.getLogger(__name__)
@@ -129,6 +129,39 @@ class WebDavXmlUtils:
         except etree.XMLSyntaxError as err:
             _LOGGER.warning("Failed to parse free space response XML: %s", err)
             return None
+
+    @staticmethod
+    def parse_quota_response(content: bytes, hostname: str) -> QuotaInfo:
+        """Parse of response content XML from WebDAV server and extract quota information.
+
+        :param content: the XML content of HTTP response from WebDAV server.
+        :param hostname: the server hostname.
+        :return: QuotaInfo with available and used bytes.
+        :raises MethodNotSupportedError: when no quota properties are present in the response.
+        """
+        try:
+            tree = etree.fromstring(content)
+            available_node = tree.find(".//{DAV:}quota-available-bytes")
+            used_node = tree.find(".//{DAV:}quota-used-bytes")
+            if available_node is None and used_node is None:
+                raise MethodNotSupportedError(name="quota", server=hostname)
+            return QuotaInfo(
+                available_bytes=(
+                    int(available_node.text)
+                    if available_node is not None and available_node.text
+                    else None
+                ),
+                used_bytes=(
+                    int(used_node.text)
+                    if used_node is not None and used_node.text
+                    else None
+                ),
+            )
+        except TypeError as err:
+            raise MethodNotSupportedError(name="quota", server=hostname) from err
+        except etree.XMLSyntaxError as err:
+            _LOGGER.warning("Failed to parse quota response XML: %s", err)
+            return QuotaInfo(available_bytes=None, used_bytes=None)
 
     @staticmethod
     def get_info_from_response(response: etree.Element) -> dict[str, str]:

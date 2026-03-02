@@ -22,7 +22,7 @@ from .exceptions import (
     UnauthorizedError,
     WebDavError,
 )
-from .models import Property, PropertyRequest
+from .models import Property, PropertyRequest, QuotaInfo
 
 
 def __getattr__(name: str) -> type:
@@ -54,6 +54,7 @@ __all__ = [
     "OptionNotValidError",
     "Property",
     "PropertyRequest",
+    "QuotaInfo",
     "RemoteParentNotFoundError",
     "RemoteResourceNotFoundError",
     "ResourceLockedError",
