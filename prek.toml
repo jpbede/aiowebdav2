@@ -1,0 +1,177 @@
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "ruff-check"
+name = "Ruff Linter"
+language = "system"
+entry = "ruff check"
+types = ["python"]
+pass_filenames = true
+
+[[repos.hooks]]
+id = "ruff-format"
+name = "Ruff Formatter"
+language = "system"
+entry = "ruff format"
+types = ["python"]
+pass_filenames = true
+
+[[repos.hooks]]
+id = "check-ast"
+name = "Check Python AST"
+language = "system"
+entry = "check-ast"
+types = ["python"]
+
+[[repos.hooks]]
+id = "check-case-conflict"
+name = "Check for case conflicts"
+language = "system"
+entry = "check-case-conflict"
+
+[[repos.hooks]]
+id = "check-docstring-first"
+name = "Check docstring is first"
+language = "system"
+entry = "check-docstring-first"
+types = ["python"]
+
+[[repos.hooks]]
+id = "check-executables-have-shebangs"
+name = "Check that executables have shebangs"
+language = "system"
+entry = "check-executables-have-shebangs"
+types = ["text", "executable"]
+
+[[repos.hooks]]
+id = "check-json"
+name = "Check JSON files"
+language = "system"
+entry = "check-json"
+types = ["json"]
+
+[[repos.hooks]]
+id = "check-merge-conflict"
+name = "Check for merge conflicts"
+language = "system"
+entry = "check-merge-conflict"
+types = ["text"]
+
+[[repos.hooks]]
+id = "check-symlinks"
+name = "Check for broken symlinks"
+language = "system"
+entry = "check-symlinks"
+types = ["symlink"]
+
+[[repos.hooks]]
+id = "check-toml"
+name = "Check TOML files"
+language = "system"
+entry = "check-toml"
+types = ["toml"]
+
+[[repos.hooks]]
+id = "check-xml"
+name = "Check XML files"
+language = "system"
+entry = "check-xml"
+types = ["xml"]
+
+[[repos.hooks]]
+id = "check-yaml"
+name = "Check YAML files"
+language = "system"
+entry = "check-yaml"
+types = ["yaml"]
+
+[[repos.hooks]]
+id = "codespell"
+name = "Check code for common misspellings"
+language = "system"
+entry = "codespell --ignore-words-list=fo,incomfort,nam,bloc,ue"
+types = ["text"]
+exclude = "^uv.lock$"
+pass_filenames = true
+
+[[repos.hooks]]
+id = "detect-private-key"
+name = "Detect Private Keys"
+language = "system"
+entry = "detect-private-key"
+types = ["text"]
+pass_filenames = true
+
+[[repos.hooks]]
+id = "end-of-file-fixer"
+name = "Fix End of Files"
+language = "system"
+entry = "end-of-file-fixer"
+types = ["text"]
+pass_filenames = true
+
+[[repos.hooks]]
+id = "mypy"
+name = "Static type checking using mypy"
+language = "system"
+entry = "mypy"
+types = ["python"]
+pass_filenames = true
+
+[[repos.hooks]]
+id = "no-commit-to-branch"
+name = "Don't commit to main branch"
+language = "system"
+entry = "no-commit-to-branch --branch=main"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "check-pyproject"
+name = "Check pyproject with tomllib"
+language = "system"
+entry = "python -c \"import tomllib; tomllib.load(open('pyproject.toml', 'rb'))\""
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "prettier"
+name = "Ensuring files are prettier"
+language = "system"
+entry = "npm run prettier"
+types = ["yaml", "json", "markdown"]
+pass_filenames = false
+
+[[repos.hooks]]
+id = "pylint"
+name = "Starring code with pylint"
+language = "system"
+entry = "pylint"
+types = ["python"]
+pass_filenames = true
+
+[[repos.hooks]]
+id = "pytest"
+name = "Running tests and test coverage with pytest"
+language = "system"
+entry = "pytest"
+types = ["python"]
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "trailing-whitespace-fixer"
+name = "Trim Trailing Whitespace"
+language = "system"
+entry = "trailing-whitespace-fixer"
+types = ["text"]
+pass_filenames = true
+
+[[repos.hooks]]
+id = "yamllint"
+name = "Check YAML files with yamllint"
+language = "system"
+entry = "yamllint"
+types = ["yaml"]
+pass_filenames = true

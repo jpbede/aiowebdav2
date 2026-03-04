@@ -19,19 +19,13 @@ jobs:
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v6.0.2
-      - name: 🏗 Set up Poetry
-        run: pipx install poetry
-      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
-        id: python
-        uses: actions/setup-python@v6.2.0
+      - name: 🏗 Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ env.DEFAULT_PYTHON }}
-          cache: "poetry"
-      - name: 🏗 Install workflow dependencies
-        run: |
-          poetry config virtualenvs.create true
-          poetry config virtualenvs.in-project true
+          enable-cache: true
+      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
+        run: uv python install ${{ env.DEFAULT_PYTHON }}
       - name: 🏗 Install dependencies
-        run: poetry install --no-interaction
+        run: uv sync --extra dev
       - name: 🚀 Run mypy
-        run: poetry run mypy aiowebdav2
+        run: uv run mypy aiowebdav2
