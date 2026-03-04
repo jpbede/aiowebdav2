@@ -160,4 +160,3 @@ combine-as-imports = true
 
 [tool.ruff.lint.mccabe]
 max-complexity = 25
-
