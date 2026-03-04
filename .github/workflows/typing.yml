@@ -26,6 +26,6 @@ jobs:
       - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
         run: uv python install ${{ env.DEFAULT_PYTHON }}
       - name: 🏗 Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --group dev
       - name: 🚀 Run mypy
         run: uv run mypy aiowebdav2

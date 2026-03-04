@@ -28,7 +28,7 @@ dependencies = [
     "yarl>=1.18.3",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "codespell==2.4.1",
     "covdefaults==2.3.0",

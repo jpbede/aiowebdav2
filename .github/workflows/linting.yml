@@ -26,7 +26,7 @@ jobs:
       - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
         run: uv python install ${{ env.DEFAULT_PYTHON }}
       - name: 🏗 Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --group dev
       - name: 🚀 Check code for common misspellings
         run: uv run prek run --all-files codespell
 
@@ -43,7 +43,7 @@ jobs:
       - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
         run: uv python install ${{ env.DEFAULT_PYTHON }}
       - name: 🏗 Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --group dev
       - name: 🚀 Run ruff linter
         run: uv run ruff check --output-format=github .
       - name: 🚀 Run ruff formatter
@@ -62,7 +62,7 @@ jobs:
       - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
         run: uv python install ${{ env.DEFAULT_PYTHON }}
       - name: 🏗 Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --group dev
       - name: 🚀 Check Python AST
         run: uv run prek run --all-files check-ast
       - name: 🚀 Check for case conflicts
@@ -103,7 +103,7 @@ jobs:
       - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
         run: uv python install ${{ env.DEFAULT_PYTHON }}
       - name: 🏗 Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --group dev
       - name: 🚀 Run pylint
         run: uv run prek run --all-files pylint
 
@@ -120,7 +120,7 @@ jobs:
       - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
         run: uv python install ${{ env.DEFAULT_PYTHON }}
       - name: 🏗 Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --group dev
       - name: 🚀 Run yamllint
         run: uv run yamllint .
 
@@ -137,7 +137,7 @@ jobs:
       - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
         run: uv python install ${{ env.DEFAULT_PYTHON }}
       - name: 🏗 Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --group dev
       - name: 🏗 Set up Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
