@@ -19,22 +19,16 @@ jobs:
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v6.0.2
-      - name: 🏗 Set up Poetry
-        run: pipx install poetry
-      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
-        id: python
-        uses: actions/setup-python@v6.2.0
+      - name: 🏗 Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ env.DEFAULT_PYTHON }}
-          cache: "poetry"
-      - name: 🏗 Install workflow dependencies
-        run: |
-          poetry config virtualenvs.create true
-          poetry config virtualenvs.in-project true
-      - name: 🏗 Install Python dependencies
-        run: poetry install --no-interaction
+          enable-cache: true
+      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
+        run: uv python install ${{ env.DEFAULT_PYTHON }}
+      - name: 🏗 Install dependencies
+        run: uv sync --group dev
       - name: 🚀 Check code for common misspellings
-        run: poetry run pre-commit run codespell --all-files
+        run: uv run prek run --all-files codespell
 
   ruff:
     name: Ruff
@@ -42,24 +36,18 @@ jobs:
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v6.0.2
-      - name: 🏗 Set up Poetry
-        run: pipx install poetry
-      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
-        id: python
-        uses: actions/setup-python@v6.2.0
+      - name: 🏗 Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ env.DEFAULT_PYTHON }}
-          cache: "poetry"
-      - name: 🏗 Install workflow dependencies
-        run: |
-          poetry config virtualenvs.create true
-          poetry config virtualenvs.in-project true
-      - name: 🏗 Install Python dependencies
-        run: poetry install --no-interaction
+          enable-cache: true
+      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
+        run: uv python install ${{ env.DEFAULT_PYTHON }}
+      - name: 🏗 Install dependencies
+        run: uv sync --group dev
       - name: 🚀 Run ruff linter
-        run: poetry run ruff check --output-format=github .
+        run: uv run ruff check --output-format=github .
       - name: 🚀 Run ruff formatter
-        run: poetry run ruff format --check .
+        run: uv run ruff format --check .
 
   pre-commit-hooks:
     name: pre-commit-hooks
@@ -67,46 +55,40 @@ jobs:
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v6.0.2
-      - name: 🏗 Set up Poetry
-        run: pipx install poetry
-      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
-        id: python
-        uses: actions/setup-python@v6.2.0
+      - name: 🏗 Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ env.DEFAULT_PYTHON }}
-          cache: "poetry"
-      - name: 🏗 Install workflow dependencies
-        run: |
-          poetry config virtualenvs.create true
-          poetry config virtualenvs.in-project true
-      - name: 🏗 Install Python dependencies
-        run: poetry install --no-interaction
+          enable-cache: true
+      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
+        run: uv python install ${{ env.DEFAULT_PYTHON }}
+      - name: 🏗 Install dependencies
+        run: uv sync --group dev
       - name: 🚀 Check Python AST
-        run: poetry run pre-commit run check-ast --all-files
+        run: uv run prek run --all-files check-ast
       - name: 🚀 Check for case conflicts
-        run: poetry run pre-commit run check-case-conflict --all-files
+        run: uv run prek run --all-files check-case-conflict
       - name: 🚀 Check docstring is first
-        run: poetry run pre-commit run check-docstring-first --all-files
+        run: uv run prek run --all-files check-docstring-first
       - name: 🚀 Check that executables have shebangs
-        run: poetry run pre-commit run check-executables-have-shebangs --all-files
+        run: uv run prek run --all-files check-executables-have-shebangs
       - name: 🚀 Check JSON files
-        run: poetry run pre-commit run check-json --all-files
+        run: uv run prek run --all-files check-json
       - name: 🚀 Check for merge conflicts
-        run: poetry run pre-commit run check-merge-conflict --all-files
+        run: uv run prek run --all-files check-merge-conflict
       - name: 🚀 Check for broken symlinks
-        run: poetry run pre-commit run check-symlinks --all-files
+        run: uv run prek run --all-files check-symlinks
       - name: 🚀 Check TOML files
-        run: poetry run pre-commit run check-toml --all-files
+        run: uv run prek run --all-files check-toml
       - name: 🚀 Check XML files
-        run: poetry run pre-commit run check-xml --all-files
+        run: uv run prek run --all-files check-xml
       - name: 🚀 Check YAML files
-        run: poetry run pre-commit run check-yaml --all-files
+        run: uv run prek run --all-files check-yaml
       - name: 🚀 Detect Private Keys
-        run: poetry run pre-commit run detect-private-key --all-files
+        run: uv run prek run --all-files detect-private-key
       - name: 🚀 Check End of Files
-        run: poetry run pre-commit run end-of-file-fixer --all-files
+        run: uv run prek run --all-files end-of-file-fixer
       - name: 🚀 Trim Trailing Whitespace
-        run: poetry run pre-commit run trailing-whitespace --all-files
+        run: uv run prek run --all-files trailing-whitespace-fixer
 
   pylint:
     name: pylint
@@ -114,22 +96,16 @@ jobs:
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v6.0.2
-      - name: 🏗 Set up Poetry
-        run: pipx install poetry
-      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
-        id: python
-        uses: actions/setup-python@v6.2.0
+      - name: 🏗 Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ env.DEFAULT_PYTHON }}
-          cache: "poetry"
-      - name: 🏗 Install workflow dependencies
-        run: |
-          poetry config virtualenvs.create true
-          poetry config virtualenvs.in-project true
-      - name: 🏗 Install Python dependencies
-        run: poetry install --no-interaction
+          enable-cache: true
+      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
+        run: uv python install ${{ env.DEFAULT_PYTHON }}
+      - name: 🏗 Install dependencies
+        run: uv sync --group dev
       - name: 🚀 Run pylint
-        run: poetry run pre-commit run pylint --all-files
+        run: uv run prek run --all-files pylint
 
   yamllint:
     name: yamllint
@@ -137,22 +113,16 @@ jobs:
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v6.0.2
-      - name: 🏗 Set up Poetry
-        run: pipx install poetry
-      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
-        id: python
-        uses: actions/setup-python@v6.2.0
+      - name: 🏗 Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ env.DEFAULT_PYTHON }}
-          cache: "poetry"
-      - name: 🏗 Install workflow dependencies
-        run: |
-          poetry config virtualenvs.create true
-          poetry config virtualenvs.in-project true
-      - name: 🏗 Install Python dependencies
-        run: poetry install --no-interaction
+          enable-cache: true
+      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
+        run: uv python install ${{ env.DEFAULT_PYTHON }}
+      - name: 🏗 Install dependencies
+        run: uv sync --group dev
       - name: 🚀 Run yamllint
-        run: poetry run yamllint .
+        run: uv run yamllint .
 
   prettier:
     name: Prettier
@@ -160,20 +130,14 @@ jobs:
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v6.0.2
-      - name: 🏗 Set up Poetry
-        run: pipx install poetry
-      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
-        id: python
-        uses: actions/setup-python@v6.2.0
+      - name: 🏗 Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ env.DEFAULT_PYTHON }}
-          cache: "poetry"
-      - name: 🏗 Install workflow dependencies
-        run: |
-          poetry config virtualenvs.create true
-          poetry config virtualenvs.in-project true
-      - name: 🏗 Install Python dependencies
-        run: poetry install --no-interaction
+          enable-cache: true
+      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
+        run: uv python install ${{ env.DEFAULT_PYTHON }}
+      - name: 🏗 Install dependencies
+        run: uv sync --group dev
       - name: 🏗 Set up Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
@@ -182,4 +146,4 @@ jobs:
       - name: 🏗 Install NPM dependencies
         run: npm install
       - name: 🚀 Run prettier
-        run: poetry run pre-commit run prettier --all-files
+        run: uv run prek run --all-files prettier

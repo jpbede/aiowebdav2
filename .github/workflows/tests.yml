@@ -22,22 +22,16 @@ jobs:
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v6.0.2
-      - name: 🏗 Set up Poetry
-        run: pipx install poetry
-      - name: 🏗 Set up Python ${{ matrix.python }}
-        id: python
-        uses: actions/setup-python@v6.2.0
+      - name: 🏗 Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ matrix.python }}
-          cache: "poetry"
-      - name: 🏗 Install workflow dependencies
-        run: |
-          poetry config virtualenvs.create true
-          poetry config virtualenvs.in-project true
+          enable-cache: true
+      - name: 🏗 Set up Python ${{ matrix.python }}
+        run: uv python install ${{ matrix.python }}
       - name: 🏗 Install dependencies
-        run: poetry install --no-interaction
+        run: uv sync --group dev
       - name: 🚀 Run pytest
-        run: poetry run pytest --cov aiowebdav2 tests
+        run: uv run pytest --cov aiowebdav2 tests
       - name: ⬆️ Upload coverage artifact
         uses: actions/upload-artifact@v7
         with:
@@ -55,23 +49,17 @@ jobs:
           fetch-depth: 0
       - name: ⬇️ Download coverage data
         uses: actions/download-artifact@v8
-      - name: 🏗 Set up Poetry
-        run: pipx install poetry
-      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
-        id: python
-        uses: actions/setup-python@v6.2.0
+      - name: 🏗 Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ env.DEFAULT_PYTHON }}
-          cache: "poetry"
-      - name: 🏗 Install workflow dependencies
-        run: |
-          poetry config virtualenvs.create true
-          poetry config virtualenvs.in-project true
+          enable-cache: true
+      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
+        run: uv python install ${{ env.DEFAULT_PYTHON }}
       - name: 🏗 Install dependencies
-        run: poetry install --no-interaction
+        run: uv sync --group dev
       - name: 🚀 Process coverage results
         run: |
-          poetry run coverage combine coverage*/.coverage*
-          poetry run coverage xml -i
+          uv run coverage combine coverage*/.coverage*
+          uv run coverage xml -i
       - name: 🚀 Upload coverage report
         uses: codecov/codecov-action@v5.5.2
