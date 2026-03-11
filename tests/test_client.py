@@ -487,7 +487,6 @@ async def test_upload_iter_progress_unsupported_buffer(
     client: Client, responses: aioresponses, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Test upload iter progress logs warning for unsupported buffer."""
-
     responses.add(
         "https://webdav.example.com/test_dir/test.txt",
         "PUT",
@@ -508,7 +507,7 @@ async def test_upload_iter_progress_unsupported_buffer(
         progress=on_progress,
     )
 
-    assert progress_calls == []
+    assert not progress_calls
     assert any(
         (
             "Progress callback is only supported for AsyncIterator buffers, "
