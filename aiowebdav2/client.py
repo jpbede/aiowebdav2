@@ -512,7 +512,8 @@ class Client:
         :param progress: Pass a callback function to view the file transmission progress.
                 The function must take *(current, total)* as positional arguments (look at Other Parameters below for a
                 detailed description) and will be called back each time a new file
-                chunk has been consumed by the HTTP request body writer.
+                chunk is read from the HTTP response body and forwarded to the
+                local sink.
                 Example def progress_update(current, total, *args) ...
         :param concurrency: the maximum number of concurrent file transfers. Defaults to 1 (sequential).
                 Only applies to directory downloads.
@@ -556,8 +557,11 @@ class Client:
         :param local_path: the path to local directory for saving downloaded files and directories.
         :param progress: Pass a callback function to view the file transmission progress.
                 The function must take *(current, total)* as positional arguments (look at Other Parameters below for a
-                detailed description) and will be called back each time a new file chunk has been successfully
-                transmitted. Example def progress_update(current, total, *args) ...
+                detailed description) and will be called back each time a new file
+                chunk has been handed off to the HTTP request body writer.
+                This callback reports handoff progress and does not guarantee
+                network-level delivery or acknowledgement.
+                Example def progress_update(current, total, *args) ...
         :param overwrite: if True (default), delete existing local directory before downloading.
                 If False, raise FileExistsError when the local directory already exists.
         :param concurrency: the maximum number of concurrent file transfers. Defaults to 1 (sequential).

@@ -483,6 +483,42 @@ async def test_upload_iter_progress_no_content_length(
     assert progress_calls == [(0, None), (7, None), (13, None)]
 
 
+async def test_upload_iter_progress_unsupported_buffer(
+    client: Client, responses: aioresponses, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test upload iter progress logs warning for unsupported buffer."""
+
+    responses.add(
+        "https://webdav.example.com/test_dir/test.txt",
+        "PUT",
+        headers={"Accept": "*/*"},
+        status=201,
+    )
+
+    progress_calls: list[tuple[int, int | None]] = []
+
+    def on_progress(current: int, total: int | None) -> None:
+        progress_calls.append((current, total))
+
+    caplog.set_level("WARNING", logger="aiowebdav2.client")
+    await client.upload_iter(
+        io.BytesIO(b"Hello, world!"),
+        "/test_dir/test.txt",
+        content_length=13,
+        progress=on_progress,
+    )
+
+    assert progress_calls == []
+    assert any(
+        (
+            "Progress callback is only supported for AsyncIterator buffers, "
+            "ignoring progress for BytesIO"
+        )
+        in record.getMessage()
+        for record in caplog.records
+    )
+
+
 async def test_download_iter(client: Client, responses: aioresponses) -> None:
     """Test download iter."""
 
