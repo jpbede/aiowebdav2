@@ -180,13 +180,15 @@ async def test_list_files(client: Client, responses: aioresponses) -> None:
 
 ### Test-specific Ruff Overrides (`tests/ruff.toml`)
 
-Tests allow: `assert` statements, password detection strings, private member access.
+Tests allow: `assert` statements, password detection strings, private member
+access, moving type-only imports used by pytest (`TC002`), and overwriting
+functions with many arguments (`PLR0913`).
 
 ## CI/CD
 
-GitHub Actions runs on every PR and push to `main`:
+GitHub Actions includes PR/push workflows and release-only workflows:
 
 - **tests.yml** — pytest on Python 3.11, 3.12, 3.13
 - **linting.yml** — ruff, codespell, pylint, yamllint, prettier
 - **typing.yml** — mypy strict checking
-- **release.yml** — builds and publishes to PyPI on GitHub release
+- **release.yml** — builds and publishes to PyPI on GitHub release (`release.published`)
