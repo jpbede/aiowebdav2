@@ -511,8 +511,9 @@ class Client:
         :param local_path: the path to save resource locally.
         :param progress: Pass a callback function to view the file transmission progress.
                 The function must take *(current, total)* as positional arguments (look at Other Parameters below for a
-                detailed description) and will be called back each time a new file chunk has been successfully
-                transmitted. Example def progress_update(current, total, *args) ...
+                detailed description) and will be called back each time a new file
+                chunk has been consumed by the HTTP request body writer.
+                Example def progress_update(current, total, *args) ...
         :param concurrency: the maximum number of concurrent file transfers. Defaults to 1 (sequential).
                 Only applies to directory downloads.
         """
@@ -644,6 +645,8 @@ class Client:
         *,
         timeout: ClientTimeout | None = None,
         content_length: int | None = None,
+        progress: Callable[[int, int | None], Coroutine[Any, Any, None] | None]
+        | None = None,
     ) -> None:
         """Upload file from buffer to remote path on WebDAV server.
 
@@ -653,6 +656,16 @@ class Client:
         :param str remote_path: the path to save file remotely on WebDAV server.
         :param timeout: (optional) the timeout for the request.
         :param content_length: (optional) the length of content in buffer.
+        :param progress: Pass a callback function to view the file transmission progress.
+                The function must take *(current, total)* as positional arguments (look at Other Parameters below for a
+                detailed description) and will be called back each time a new file chunk has been successfully
+                transmitted. Example def progress_update(current, total, *args) ...
+
+                .. note::
+                    Progress tracking is only supported when *buff* is an
+                    :class:`~collections.abc.AsyncIterator`. For other buffer types
+                    (``str``, ``IO[bytes]``, ``AsyncWriteBuffer``), a warning is logged
+                    and the callback is not invoked.
         """
         urn = Urn(remote_path)
         if urn.is_dir():
@@ -662,11 +675,22 @@ class Client:
         if content_length is not None:
             headers["Content-Length"] = str(content_length)
 
+        data: str | IO[bytes] | AsyncIterator[bytes] | AsyncWriteBuffer = buff
+        if progress is not None:
+            if isinstance(buff, AsyncIterator):
+                data = self._wrap_with_progress(buff, progress, content_length)
+            else:
+                _LOGGER.warning(
+                    "Progress callback is only supported for AsyncIterator buffers, "
+                    "ignoring progress for %s",
+                    type(buff).__name__,
+                )
+
         try:
             await self.execute_request(
                 action="upload",
                 path=urn.path(),
-                data=buff,
+                data=data,
                 timeout=timeout,
                 headers_ext=headers,
             )
@@ -1219,6 +1243,20 @@ class Client:
         ret = progress(current, total)
         if inspect.isawaitable(ret):
             await ret
+
+    async def _wrap_with_progress(
+        self,
+        buff: AsyncIterator[bytes],
+        progress: Callable[[int, int | None], Coroutine[Any, Any, None] | None],
+        total: int | None,
+    ) -> AsyncIterator[bytes]:
+        """Wrap an async iterator with progress tracking."""
+        await self._call_progress(progress, 0, total)
+        current = 0
+        async for chunk in buff:
+            current += len(chunk)
+            yield chunk
+            await self._call_progress(progress, current, total)
 
     async def close(self) -> None:
         """Close the connection to WebDAV server."""

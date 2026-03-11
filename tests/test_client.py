@@ -412,6 +412,77 @@ async def test_upload_iter(client: Client, responses: aioresponses) -> None:
     await client.upload_iter(stream(), "/test_dir/test.txt")
 
 
+async def test_upload_iter_progress(client: Client, responses: aioresponses) -> None:
+    """Test upload iter progress."""
+
+    async def callback(_url: str, **kwargs: Any) -> CallbackResult:
+        result = bytearray()
+        async for chunk in kwargs["data"]:
+            result += chunk
+        assert result == b"Hello, world!"
+        return CallbackResult(status=201)
+
+    responses.add(
+        "https://webdav.example.com/test_dir/test.txt",
+        "PUT",
+        headers={"Accept": "*/*"},
+        callback=callback,
+    )
+
+    progress_calls: list[tuple[int, int | None]] = []
+
+    def on_progress(current: int, total: int | None) -> None:
+        progress_calls.append((current, total))
+
+    async def stream() -> AsyncGenerator[bytes, None]:
+        yield b"Hello, "
+        yield b"world!"
+
+    await client.upload_iter(
+        stream(),
+        "/test_dir/test.txt",
+        content_length=13,
+        progress=on_progress,
+    )
+    assert progress_calls == [(0, 13), (7, 13), (13, 13)]
+
+
+async def test_upload_iter_progress_no_content_length(
+    client: Client, responses: aioresponses
+) -> None:
+    """Test upload iter progress without content length."""
+
+    async def callback(_url: str, **kwargs: Any) -> CallbackResult:
+        result = bytearray()
+        async for chunk in kwargs["data"]:
+            result += chunk
+        assert result == b"Hello, world!"
+        return CallbackResult(status=201)
+
+    responses.add(
+        "https://webdav.example.com/test_dir/test.txt",
+        "PUT",
+        headers={"Accept": "*/*"},
+        callback=callback,
+    )
+
+    progress_calls: list[tuple[int, int | None]] = []
+
+    def on_progress(current: int, total: int | None) -> None:
+        progress_calls.append((current, total))
+
+    async def stream() -> AsyncGenerator[bytes, None]:
+        yield b"Hello, "
+        yield b"world!"
+
+    await client.upload_iter(
+        stream(),
+        "/test_dir/test.txt",
+        progress=on_progress,
+    )
+    assert progress_calls == [(0, None), (7, None), (13, None)]
+
+
 async def test_download_iter(client: Client, responses: aioresponses) -> None:
     """Test download iter."""
 
