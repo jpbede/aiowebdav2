@@ -10,14 +10,14 @@ from tests import load_responses
 
 
 @pytest.fixture(name="responses")
-async def aiointercept_fixture() -> AsyncGenerator[aiointercept, None]:
+async def aiointercept_fixture() -> AsyncGenerator[aiointercept]:
     """Return aiointercept fixture."""
     async with aiointercept(mock_external_urls=True) as mocked_responses:
         yield mocked_responses
 
 
-@pytest.fixture(autouse=True)
-def mock_responses(responses: aiointercept) -> None:
+@pytest.fixture(name="default_response")
+def default_response_fixture(responses: aiointercept) -> None:
     """Add default responses."""
     responses.add(
         "https://webdav.example.com",
@@ -30,7 +30,7 @@ def mock_responses(responses: aiointercept) -> None:
 
 
 @pytest.fixture(name="client")
-async def client() -> AsyncGenerator[Client, None]:
+async def client() -> AsyncGenerator[Client]:
     """Return a aiowebdav2 client."""
     async with (
         Client(

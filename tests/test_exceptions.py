@@ -6,6 +6,7 @@ from aiowebdav2.exceptions import (
     AccessDeniedError,
     ConflictError,
     ConnectionExceptionError,
+    InvalidResponseError,
     LocalResourceNotFoundError,
     MethodNotSupportedError,
     NoConnectionError,
@@ -51,6 +52,10 @@ from aiowebdav2.exceptions import (
                 url="https://example.com/file", code=500, message="boom"
             ),
             "Request to https://example.com/file failed with code 500 and message: boom",
+        ),
+        (
+            InvalidResponseError("https://example.com/file", "missing header"),
+            "Invalid response from https://example.com/file: missing header",
         ),
         (
             NotEnoughSpaceError(),

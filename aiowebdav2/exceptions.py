@@ -135,6 +135,19 @@ class ResponseErrorCodeError(WebDavError):
         )
 
 
+class InvalidResponseError(WebDavError):
+    """Exception for invalid server response data."""
+
+    def __init__(self, url: str, message: str) -> None:
+        """Exception for invalid server response data."""
+        self.url = url
+        self.message = message
+
+    def __str__(self) -> str:
+        """Return string representation of exception."""
+        return f"Invalid response from {self.url}: {self.message}"
+
+
 class NotEnoughSpaceError(WebDavError):
     """Exception for not enough space on the server."""
 
