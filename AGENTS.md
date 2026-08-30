@@ -95,13 +95,13 @@ Uses `prek` (not `pre-commit`). Run all hooks: `uv run prek run --all-files`.
 Three groups separated by blank lines, sorted alphabetically within each:
 
 ```python
-import asyncio                              # 1. Standard library
+import asyncio  # 1. Standard library
 from pathlib import Path
 
-from aiohttp import ClientTimeout           # 2. Third-party
+from aiohttp import ClientTimeout  # 2. Third-party
 from lxml import etree
 
-from .exceptions import WebDavError         # 3. Local (relative imports)
+from .exceptions import WebDavError  # 3. Local (relative imports)
 from .models import Property
 ```
 
