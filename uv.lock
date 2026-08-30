@@ -205,7 +205,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=0.7.0" },
-    { name = "aiohttp", specifier = ">=3.8.0" },
+    { name = "aiohttp", specifier = ">=3.14.0" },
     { name = "lxml", specifier = ">=5.3.0" },
     { name = "python-dateutil", specifier = ">=2.9.0.post0" },
     { name = "yarl", specifier = ">=1.18.3" },

@@ -18,6 +18,7 @@ from aiohttp import (
     ClientResponseError,
     ClientSession,
     ClientTimeout,
+    encode_basic_auth,
 )
 from aiohttp.client import DEFAULT_TIMEOUT
 from dateutil.parser import parse as dateutil_parse
@@ -174,6 +175,8 @@ class Client:
             headers.update(headers_ext)
         if self._options.token:
             headers["Authorization"] = f"Bearer {self._options.token}"
+        elif basic_auth := self._basic_auth_header():
+            headers["Authorization"] = basic_auth
         return headers
 
     def get_url(self, path: str) -> str:
@@ -194,12 +197,15 @@ class Client:
         """
         return f"{unquote(self._options.root)}{urn.path()}"
 
-    def _get_auth(self) -> BasicAuth | None:
+    def _basic_auth_header(self) -> str | None:
         if self._options.token or self._session.auth:
             return None
-        if self._username and self._password:
-            return BasicAuth(self._username, self._password, encoding="utf-8")
-        return None
+        if not self._username or not self._password:
+            return None
+        if ":" in self._username:
+            msg = 'A ":" is not allowed in login'
+            raise ValueError(msg)
+        return encode_basic_auth(self._username, self._password)
 
     async def execute_request(
         self,
@@ -236,7 +242,6 @@ class Client:
             response = await self._session.request(
                 method=method,
                 url=url,
-                auth=self._get_auth(),
                 headers=self.get_headers(action, headers_ext),
                 timeout=timeout or self._options.timeout,
                 ssl=self._options.verify_ssl,
