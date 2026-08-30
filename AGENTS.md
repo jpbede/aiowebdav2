@@ -159,19 +159,19 @@ f"Bearer {self._options.token}"
 
 ## Testing Conventions
 
-- **Framework:** pytest with `pytest-asyncio` (auto mode) and `aioresponses`
+- **Framework:** pytest with `pytest-asyncio` (auto mode) and `aiointercept`
 - **File naming:** `test_<module_name>.py` mirroring source modules
 - **Docstrings:** Every test function must have a one-line docstring
 - **Assertions:** Plain `assert` statements (no `self.assertEqual`)
 - **Exception testing:** `pytest.raises` with `match=` parameter
 - **Parametrize:** `@pytest.mark.parametrize` with tuple-based test IDs
 - **Fixtures:** Defined in `conftest.py`, use `name=` parameter for renaming
-- **HTTP mocking:** `aioresponses` library (not `unittest.mock`)
+- **HTTP mocking:** `aiointercept` library (not `unittest.mock`)
 - **Test data:** XML fixtures in `tests/responses/`, loaded via `load_responses()`
 - **Coverage:** Minimum 50% enforced (`fail_under = 50`)
 
 ```python
-async def test_list_files(client: Client, responses: aioresponses) -> None:
+async def test_list_files(client: Client, responses: aiointercept) -> None:
     """Test list files."""
     responses.add(url, "PROPFIND", status=200, body=load_responses("get_list.xml"))
     files = await client.list_files("/test_dir/")

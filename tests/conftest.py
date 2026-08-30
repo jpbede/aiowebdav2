@@ -1,8 +1,8 @@
 """Fixtures for aiowebdav2 tests."""
 
-from collections.abc import AsyncGenerator, Callable, Generator
+from collections.abc import AsyncGenerator, Callable
 
-from aioresponses import aioresponses
+from aiointercept import aiointercept
 import pytest
 
 from aiowebdav2 import Client
@@ -10,14 +10,14 @@ from tests import load_responses
 
 
 @pytest.fixture(name="responses")
-def aioresponses_fixture() -> Generator[aioresponses, None, None]:
-    """Return aioresponses fixture."""
-    with aioresponses() as mocked_responses:
+async def aiointercept_fixture() -> AsyncGenerator[aiointercept, None]:
+    """Return aiointercept fixture."""
+    async with aiointercept(mock_external_urls=True) as mocked_responses:
         yield mocked_responses
 
 
 @pytest.fixture(autouse=True)
-def mock_responses(responses: aioresponses) -> None:
+def mock_responses(responses: aiointercept) -> None:
     """Add default responses."""
     responses.add(
         "https://webdav.example.com",
