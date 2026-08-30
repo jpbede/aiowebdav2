@@ -180,12 +180,14 @@ f"Bearer {self._options.token}"
   `set_property`, `set_properties`, `lock`, `unlock`, and `close`.
 - Local transfer helpers are public functions in `aiowebdav2.filesystem`:
   `download_file`, `upload_file`, `download_tree`, and `upload_tree`.
+  They depend on the optional `aiowebdav2[filesystem]` extra.
 - Do not accept or pass `aiohttp.BasicAuth`. aiohttp v4 deprecates it for this
   use case. Basic auth is generated internally from `username` and `password`
   using the standard library. Bearer auth uses `ClientOptions(token=...)`.
 - Do not add `proxy_auth`; proxy credentials must be supplied through
   `ClientOptions(proxy_headers=...)`.
-- Prefer the standard library over new dependencies. Do not re-add `aiofiles` or
+- Prefer the standard library over new dependencies. `aiofiles` is only used by
+  the optional local filesystem transfer helpers; do not re-add
   `python-dateutil` unless there is a measured reason.
 
 ## XML & Models

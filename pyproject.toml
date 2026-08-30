@@ -26,8 +26,14 @@ dependencies = [
     "yarl>=1.18.3",
 ]
 
+[project.optional-dependencies]
+filesystem = [
+    "aiofiles>=25.1.0",
+]
+
 [dependency-groups]
 dev = [
+    "aiofiles==25.1.0",
     "codespell==2.4.2",
     "covdefaults==2.3.0",
     "coverage[toml]==7.14.1",

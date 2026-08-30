@@ -66,7 +66,12 @@ Main remote operations:
 ## Filesystem Helpers
 
 Local file transfer helpers live in `aiowebdav2.filesystem`. They depend on a
-`Client`, but the client does not depend on local paths.
+`Client`, but the client does not depend on local paths. Install the optional
+extra before using them:
+
+```bash
+pip install "aiowebdav2[filesystem]"
+```
 
 ```python
 from pathlib import Path
