@@ -61,6 +61,7 @@ Main remote operations:
 - `set_property(path, property) -> None`
 - `set_properties(path, properties) -> None`
 - `lock(path) -> Lock`
+- `unlock(path, lock_token) -> None`
 
 ## Filesystem Helpers
 
