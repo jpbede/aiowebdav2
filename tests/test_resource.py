@@ -4,7 +4,7 @@ import io
 from pathlib import Path
 from typing import Any
 
-from aioresponses import aioresponses
+from aiointercept import aiointercept
 
 from aiowebdav2.client import Client
 from aiowebdav2.models import PropertyRequest
@@ -13,7 +13,7 @@ from . import load_responses
 
 
 async def test_resource_is_dir_and_info(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test resource is dir and info."""
     responses.add(
@@ -42,7 +42,7 @@ async def test_resource_is_dir_and_info(
 
 
 async def test_resource_rename_move_copy(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test resource rename move copy."""
     responses.add(
@@ -97,7 +97,7 @@ async def test_resource_rename_move_copy(
 
 
 async def test_resource_clean_check_publish_unpublish(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test resource clean check publish unpublish."""
     responses.add(
@@ -134,7 +134,7 @@ async def test_resource_clean_check_publish_unpublish(
 
 
 async def test_resource_read_write_paths(
-    client: Client, responses: aioresponses, tmp_path: Any
+    client: Client, responses: aiointercept, tmp_path: Any
 ) -> None:
     """Test resource read write paths."""
     responses.add(
@@ -161,7 +161,7 @@ async def test_resource_read_write_paths(
 
 
 async def test_resource_read_write_buffers(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test resource read write buffers."""
     responses.add(
@@ -187,7 +187,7 @@ async def test_resource_read_write_buffers(
 
 
 async def test_resource_get_set_property(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test resource get set property."""
     responses.add(

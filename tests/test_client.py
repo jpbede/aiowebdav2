@@ -1,6 +1,6 @@
 """Tests for the client module."""
 
-from collections.abc import AsyncGenerator, AsyncIterable, Callable
+from collections.abc import AsyncGenerator, Callable
 import io
 import os
 from pathlib import Path
@@ -9,7 +9,7 @@ import time
 from typing import Any
 
 import aiohttp
-from aioresponses import CallbackResult, aioresponses
+from aiointercept import CallbackResult, aiointercept
 from multidict import CIMultiDict, CIMultiDictProxy
 import pytest
 import yarl
@@ -56,7 +56,7 @@ async def test_list_files(
     get_client: Callable[[str], Client],
     server_path: str,
     response: str,
-    responses: aioresponses,
+    responses: aiointercept,
 ) -> None:
     """Test list files."""
     responses.clear()
@@ -76,7 +76,7 @@ async def test_list_files(
     assert files == ["/test_dir/", "/test_dir/test.txt"]
 
 
-async def test_list_files_empty(client: Client, responses: aioresponses) -> None:
+async def test_list_files_empty(client: Client, responses: aiointercept) -> None:
     """Test list files with empty response."""
     responses.clear()
     responses.add(
@@ -93,7 +93,7 @@ async def test_list_files_empty(client: Client, responses: aioresponses) -> None
 
 
 async def test_list_files_resource_not_found(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test list files with parent not found."""
     responses.add(
@@ -108,7 +108,7 @@ async def test_list_files_resource_not_found(
         await client.list_files("/test_dir/")
 
 
-async def test_list_files_recursive(client: Client, responses: aioresponses) -> None:
+async def test_list_files_recursive(client: Client, responses: aiointercept) -> None:
     """Test list files recursively."""
     responses.add(
         "https://webdav.example.com/test_dir/",
@@ -156,7 +156,7 @@ async def test_list_with_infos(client: Client) -> None:
     ]
 
 
-async def test_with_properties(client: Client, responses: aioresponses) -> None:
+async def test_with_properties(client: Client, responses: aiointercept) -> None:
     """Test list with properties."""
     responses.clear()
     responses.add(
@@ -202,7 +202,7 @@ async def test_with_properties(client: Client, responses: aioresponses) -> None:
     }
 
 
-async def test_info(client: Client, responses: aioresponses) -> None:
+async def test_info(client: Client, responses: aiointercept) -> None:
     """Test info."""
     responses.add(
         "https://webdav.example.com/test_dir/test.txt",
@@ -232,7 +232,7 @@ async def test_info(client: Client, responses: aioresponses) -> None:
     }
 
 
-async def test_clean(client: Client, responses: aioresponses) -> None:
+async def test_clean(client: Client, responses: aiointercept) -> None:
     """Test clean."""
     responses.add(
         "https://webdav.example.com/test_dir/test.txt",
@@ -243,7 +243,7 @@ async def test_clean(client: Client, responses: aioresponses) -> None:
     await client.clean("/test_dir/test.txt")
 
 
-async def test_get_property(client: Client, responses: aioresponses) -> None:
+async def test_get_property(client: Client, responses: aiointercept) -> None:
     """Test get property."""
     responses.add(
         "https://webdav.example.com/test_dir/test.txt",
@@ -261,7 +261,7 @@ async def test_get_property(client: Client, responses: aioresponses) -> None:
     assert prop.value == "aValue"
 
 
-async def test_set_property(client: Client, responses: aioresponses) -> None:
+async def test_set_property(client: Client, responses: aiointercept) -> None:
     """Test set property."""
 
     def callback(_url: str, **kwargs: dict[str, Any]) -> CallbackResult:
@@ -290,7 +290,7 @@ async def test_set_property(client: Client, responses: aioresponses) -> None:
     )
 
 
-async def test_mkdir(client: Client, responses: aioresponses) -> None:
+async def test_mkdir(client: Client, responses: aiointercept) -> None:
     """Test mkdir."""
     responses.add(
         "https://webdav.example.com/test_dir/",
@@ -308,7 +308,7 @@ async def test_mkdir(client: Client, responses: aioresponses) -> None:
     await client.mkdir("/test_dir/test_dir2")
 
 
-async def test_free(client: Client, responses: aioresponses) -> None:
+async def test_free(client: Client, responses: aiointercept) -> None:
     """Test free."""
     responses.clear()
     responses.add(
@@ -324,7 +324,7 @@ async def test_free(client: Client, responses: aioresponses) -> None:
     assert free == 10737417543
 
 
-async def test_free_not_supported(client: Client, responses: aioresponses) -> None:
+async def test_free_not_supported(client: Client, responses: aiointercept) -> None:
     """Test free not supported."""
     responses.clear()
     responses.add(
@@ -340,7 +340,7 @@ async def test_free_not_supported(client: Client, responses: aioresponses) -> No
         await client.free()
 
 
-async def test_quota(client: Client, responses: aioresponses) -> None:
+async def test_quota(client: Client, responses: aiointercept) -> None:
     """Test quota returns both available and used bytes."""
     responses.clear()
     responses.add(
@@ -356,7 +356,7 @@ async def test_quota(client: Client, responses: aioresponses) -> None:
     assert info == QuotaInfo(available_bytes=10737417543, used_bytes=697)
 
 
-async def test_quota_not_supported(client: Client, responses: aioresponses) -> None:
+async def test_quota_not_supported(client: Client, responses: aiointercept) -> None:
     """Test quota raises when server does not support quota properties."""
     responses.clear()
     responses.add(
@@ -372,7 +372,7 @@ async def test_quota_not_supported(client: Client, responses: aioresponses) -> N
         await client.quota()
 
 
-async def test_quota_used_only(client: Client, responses: aioresponses) -> None:
+async def test_quota_used_only(client: Client, responses: aiointercept) -> None:
     """Test quota when server only provides used bytes."""
     responses.clear()
     responses.add(
@@ -388,14 +388,11 @@ async def test_quota_used_only(client: Client, responses: aioresponses) -> None:
     assert info == QuotaInfo(available_bytes=None, used_bytes=697)
 
 
-async def test_upload_iter(client: Client, responses: aioresponses) -> None:
+async def test_upload_iter(client: Client, responses: aiointercept) -> None:
     """Test upload iter."""
 
     async def callback(_url: str, **kwargs: Any) -> CallbackResult:
-        result = bytearray()
-        async for chunk in kwargs["data"]:
-            result += chunk
-        assert result == b"Hello, world!"
+        assert kwargs["data"] == b"Hello, world!"
         return CallbackResult(status=201)
 
     responses.add(
@@ -412,14 +409,11 @@ async def test_upload_iter(client: Client, responses: aioresponses) -> None:
     await client.upload_iter(stream(), "/test_dir/test.txt")
 
 
-async def test_upload_iter_progress(client: Client, responses: aioresponses) -> None:
+async def test_upload_iter_progress(client: Client, responses: aiointercept) -> None:
     """Test upload iter progress."""
 
     async def callback(_url: str, **kwargs: Any) -> CallbackResult:
-        result = bytearray()
-        async for chunk in kwargs["data"]:
-            result += chunk
-        assert result == b"Hello, world!"
+        assert kwargs["data"] == b"Hello, world!"
         return CallbackResult(status=201)
 
     responses.add(
@@ -448,15 +442,12 @@ async def test_upload_iter_progress(client: Client, responses: aioresponses) -> 
 
 
 async def test_upload_iter_progress_no_content_length(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test upload iter progress without content length."""
 
     async def callback(_url: str, **kwargs: Any) -> CallbackResult:
-        result = bytearray()
-        async for chunk in kwargs["data"]:
-            result += chunk
-        assert result == b"Hello, world!"
+        assert kwargs["data"] == b"Hello, world!"
         return CallbackResult(status=201)
 
     responses.add(
@@ -484,7 +475,7 @@ async def test_upload_iter_progress_no_content_length(
 
 
 async def test_upload_iter_progress_unsupported_buffer(
-    client: Client, responses: aioresponses, caplog: pytest.LogCaptureFixture
+    client: Client, responses: aiointercept, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Test upload iter progress logs warning for unsupported buffer."""
     responses.add(
@@ -518,7 +509,7 @@ async def test_upload_iter_progress_unsupported_buffer(
     )
 
 
-async def test_download_iter(client: Client, responses: aioresponses) -> None:
+async def test_download_iter(client: Client, responses: aiointercept) -> None:
     """Test download iter."""
 
     async def callback(_url: str, **_kwargs: dict[str, Any]) -> CallbackResult:
@@ -543,7 +534,7 @@ async def test_download_iter(client: Client, responses: aioresponses) -> None:
         assert chunk == b"Hello, world!"
 
 
-async def test_move(client: Client, responses: aioresponses) -> None:
+async def test_move(client: Client, responses: aiointercept) -> None:
     """Test move."""
     responses.add(
         "https://webdav.example.com/test_dir/test.txt",
@@ -558,7 +549,7 @@ async def test_move(client: Client, responses: aioresponses) -> None:
     await client.move("/test_dir/test.txt", "/test_dir/test2.txt")
 
 
-async def test_check(client: Client, responses: aioresponses) -> None:
+async def test_check(client: Client, responses: aiointercept) -> None:
     """Test check."""
     responses.add(
         "https://webdav.example.com/test_dir/test.txt",
@@ -572,7 +563,7 @@ async def test_check(client: Client, responses: aioresponses) -> None:
     assert await client.check("/test_dir/test.txt")
 
 
-async def test_copy(client: Client, responses: aioresponses) -> None:
+async def test_copy(client: Client, responses: aiointercept) -> None:
     """Test copy."""
     responses.add(
         "https://webdav.example.com/test_dir/test.txt",
@@ -595,7 +586,7 @@ async def test_copy(client: Client, responses: aioresponses) -> None:
     await client.copy("/test_dir/test.txt", "/test_dir/test2.txt")
 
 
-async def test_is_dir_not_supported(client: Client, responses: aioresponses) -> None:
+async def test_is_dir_not_supported(client: Client, responses: aiointercept) -> None:
     """Test is_dir not supported."""
     responses.add(
         "https://webdav.example.com/test_dir/",
@@ -610,7 +601,7 @@ async def test_is_dir_not_supported(client: Client, responses: aioresponses) -> 
         await client.is_dir("/test_dir/")
 
 
-async def test_get_properties(client: Client, responses: aioresponses) -> None:
+async def test_get_properties(client: Client, responses: aiointercept) -> None:
     """Test get properties."""
     responses.add(
         "https://webdav.example.com/test_dir/test.txt",
@@ -673,7 +664,7 @@ async def test_client_with_external_session() -> None:
     assert c._session.closed
 
 
-async def test_unauthorized(client: Client, responses: aioresponses) -> None:
+async def test_unauthorized(client: Client, responses: aiointercept) -> None:
     """Test unauthorized."""
     responses.add(
         "https://webdav.example.com/test_dir/test.txt",
@@ -690,7 +681,7 @@ async def test_unauthorized(client: Client, responses: aioresponses) -> None:
         await client.info("/test_dir/test.txt")
 
 
-async def test_access_denied(client: Client, responses: aioresponses) -> None:
+async def test_access_denied(client: Client, responses: aiointercept) -> None:
     """Test access denied."""
     responses.add(
         "https://webdav.example.com/test_dir/test.txt",
@@ -708,7 +699,7 @@ async def test_access_denied(client: Client, responses: aioresponses) -> None:
 
 
 async def test_upload_iter_content_length(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test upload iter with content length."""
 
@@ -727,7 +718,7 @@ async def test_upload_iter_content_length(
 
 
 async def test_upload_iter_not_enough_space(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test upload iter with not enough space."""
     responses.add(
@@ -744,7 +735,7 @@ async def test_upload_iter_not_enough_space(
 
 
 async def test_upload_iter_on_dir_fails(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test upload iter on a directory."""
     responses.add(
@@ -758,7 +749,7 @@ async def test_upload_iter_on_dir_fails(
         await client.upload_iter(upload_stream(), "/test_dir/")
 
 
-async def test_upload_iter_parent_missing(responses: aioresponses) -> None:
+async def test_upload_iter_parent_missing(responses: aiointercept) -> None:
     """Test upload iter on a directory."""
     responses.add(
         "https://webdav.example.com/test_dir/test.txt",
@@ -811,12 +802,12 @@ async def test_get_headers_with_token() -> None:
         assert headers["Authorization"] == "Bearer mytoken"
 
 
-async def test_execute_request_connection_error(responses: aioresponses) -> None:
+async def test_execute_request_connection_error(responses: aiointercept) -> None:
     """Test execute request connection error."""
     responses.add(
         "https://webdav.example.com/fail",
         "PROPFIND",
-        exception=aiohttp.ClientConnectionError(),
+        exception=True,
     )
     async with Client(
         url="https://webdav.example.com", username="u", password="p"
@@ -825,29 +816,37 @@ async def test_execute_request_connection_error(responses: aioresponses) -> None
             await client.check("/fail")
 
 
-async def test_execute_request_response_error(responses: aioresponses) -> None:
+async def test_execute_request_response_error() -> None:
     """Test execute request response error."""
-    responses.add(
-        "https://webdav.example.com/fail",
-        "PROPFIND",
-        exception=aiohttp.ClientResponseError(
-            request_info=aiohttp.RequestInfo(
-                url=yarl.URL("https://webdav.example.com/fail"),
-                method="PROPFIND",
-                headers=CIMultiDictProxy(CIMultiDict()),
-                real_url=yarl.URL("https://webdav.example.com/fail"),
-            ),
-            history=(),
-        ),
-    )
+
+    class ResponseErrorSession:
+        """Session that raises a response error."""
+
+        auth: None = None
+
+        async def request(self, **_kwargs: Any) -> aiohttp.ClientResponse:
+            """Raise response error."""
+            raise aiohttp.ClientResponseError(
+                request_info=aiohttp.RequestInfo(
+                    url=yarl.URL("https://webdav.example.com/fail"),
+                    method="PROPFIND",
+                    headers=CIMultiDictProxy(CIMultiDict()),
+                    real_url=yarl.URL("https://webdav.example.com/fail"),
+                ),
+                history=(),
+            )
+
     async with Client(
-        url="https://webdav.example.com", username="u", password="p"
+        url="https://webdav.example.com",
+        username="u",
+        password="p",
+        options=ClientOptions(session=ResponseErrorSession()),
     ) as client:
         with pytest.raises(ConnectionExceptionError):
             await client.check("/fail")
 
 
-async def test_execute_request_locked(responses: aioresponses) -> None:
+async def test_execute_request_locked(responses: aiointercept) -> None:
     """Test execute request locked."""
     responses.add(
         "https://webdav.example.com/locked.txt",
@@ -861,7 +860,7 @@ async def test_execute_request_locked(responses: aioresponses) -> None:
             await client.check("/locked.txt")
 
 
-async def test_execute_request_method_not_supported(responses: aioresponses) -> None:
+async def test_execute_request_method_not_supported(responses: aiointercept) -> None:
     """Test execute request method not supported."""
     responses.add(
         "https://webdav.example.com/method.txt",
@@ -875,7 +874,7 @@ async def test_execute_request_method_not_supported(responses: aioresponses) -> 
             await client.check("/method.txt")
 
 
-async def test_execute_request_generic_error(responses: aioresponses) -> None:
+async def test_execute_request_generic_error(responses: aiointercept) -> None:
     """Test execute request generic error."""
     responses.add(
         "https://webdav.example.com/error.txt",
@@ -891,7 +890,7 @@ async def test_execute_request_generic_error(responses: aioresponses) -> None:
 
 
 async def test_list_with_infos_recursive(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test list with infos recursive."""
     responses.clear()
@@ -910,7 +909,7 @@ async def test_list_with_infos_recursive(
 
 
 async def test_list_with_properties_none(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test list with properties none."""
     responses.clear()
@@ -927,7 +926,7 @@ async def test_list_with_properties_none(
 
 
 async def test_stream_with_progress_sync_and_async(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test stream with progress sync and async."""
     responses.add(
@@ -970,7 +969,7 @@ async def test_stream_with_progress_sync_and_async(
 
 
 async def test_download_from_with_progress(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test download from with progress."""
     responses.add(
@@ -992,7 +991,7 @@ async def test_download_from_with_progress(
 
 
 async def test_download_dispatch_file_and_dir(
-    client: Client, responses: aioresponses, tmp_path: Any
+    client: Client, responses: aiointercept, tmp_path: Any
 ) -> None:
     """Test download dispatch file and dir."""
     responses.add(
@@ -1028,7 +1027,7 @@ async def test_download_dispatch_file_and_dir(
 
 
 async def test_download_directory_removes_existing(
-    client: Client, responses: aioresponses, tmp_path: Any
+    client: Client, responses: aiointercept, tmp_path: Any
 ) -> None:
     """Test download directory removes existing."""
     responses.add(
@@ -1065,7 +1064,7 @@ async def test_download_file_rejects_directory(client: Client, tmp_path: Any) ->
 
 
 async def test_upload_dispatch_file_and_dir(
-    client: Client, responses: aioresponses, tmp_path: Any
+    client: Client, responses: aiointercept, tmp_path: Any
 ) -> None:
     """Test upload dispatch file and dir."""
     local_dir = Path(tmp_path) / "upload_dir"
@@ -1100,7 +1099,7 @@ async def test_upload_dispatch_file_and_dir(
 
 
 async def test_upload_directory_validations(
-    client: Client, responses: aioresponses, tmp_path: Any
+    client: Client, responses: aiointercept, tmp_path: Any
 ) -> None:
     """Test upload directory validations."""
     local_dir = Path(tmp_path) / "local"
@@ -1132,7 +1131,7 @@ async def test_upload_directory_validations(
 
 
 async def test_upload_directory_uses_filename_not_full_path(
-    client: Client, responses: aioresponses, tmp_path: Any
+    client: Client, responses: aiointercept, tmp_path: Any
 ) -> None:
     """Test upload directory constructs remote paths from filename, not full local path."""
     local_dir = Path(tmp_path) / "upload_src"
@@ -1164,7 +1163,7 @@ async def test_upload_directory_uses_filename_not_full_path(
 
 
 async def test_upload_file_progress_and_force(
-    responses: aioresponses, tmp_path: Any
+    responses: aiointercept, tmp_path: Any
 ) -> None:
     """Test upload file progress and force."""
     local_path = Path(tmp_path) / "file.txt"
@@ -1177,11 +1176,7 @@ async def test_upload_file_progress_and_force(
         status=201,
     )
 
-    async def upload_callback(_url: str, **kwargs: dict[str, Any]) -> CallbackResult:
-        data = kwargs.get("data")
-        if isinstance(data, AsyncIterable):
-            async for _chunk in data:
-                pass
+    async def upload_callback(_url: str, **_kwargs: dict[str, Any]) -> CallbackResult:
         return CallbackResult(status=201)
 
     responses.add(
@@ -1229,7 +1224,7 @@ async def test_upload_file_validations(client: Client, tmp_path: Any) -> None:
 
 
 async def test_copy_directory_adds_depth(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test copy directory adds depth."""
     responses.add(
@@ -1255,7 +1250,7 @@ async def test_copy_directory_adds_depth(
 
 
 async def test_lock_and_lock_client_headers(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test lock and lock client headers."""
     responses.add(
@@ -1278,7 +1273,7 @@ async def test_lock_and_lock_client_headers(
 
 
 async def test_lock_with_timeout_header(
-    client: Client, responses: aioresponses
+    client: Client, responses: aiointercept
 ) -> None:
     """Test lock with timeout header."""
 
@@ -1309,7 +1304,7 @@ async def test_resource_factory(client: Client) -> None:
 
 
 async def test_is_local_more_recent(
-    client: Client, responses: aioresponses, tmp_path: Any
+    client: Client, responses: aiointercept, tmp_path: Any
 ) -> None:
     """Test is local more recent."""
     responses.add(
@@ -1328,7 +1323,7 @@ async def test_is_local_more_recent(
 
 
 async def test_is_local_more_recent_error(
-    client: Client, responses: aioresponses, tmp_path: Any
+    client: Client, responses: aiointercept, tmp_path: Any
 ) -> None:
     """Test is local more recent error."""
     responses.add(
@@ -1347,7 +1342,7 @@ async def test_is_local_more_recent_error(
 
 
 async def test_push_pull_sync(
-    client: Client, responses: aioresponses, tmp_path: Any
+    client: Client, responses: aiointercept, tmp_path: Any
 ) -> None:
     """Test push pull sync."""
     local_dir = Path(tmp_path) / "local"
@@ -1495,7 +1490,7 @@ async def test_push_pull_sync(
         await client.sync("/remote/", local_dir)
 
 
-async def test_publish_unpublish(client: Client, responses: aioresponses) -> None:
+async def test_publish_unpublish(client: Client, responses: aiointercept) -> None:
     """Test publish unpublish."""
     responses.add(
         "https://webdav.example.com/test.txt",
@@ -1515,7 +1510,7 @@ async def test_publish_unpublish(client: Client, responses: aioresponses) -> Non
 
 
 async def test_download_directory_concurrent(
-    client: Client, responses: aioresponses, tmp_path: Any
+    client: Client, responses: aiointercept, tmp_path: Any
 ) -> None:
     """Test download directory with concurrency > 1 downloads all files."""
     responses.add(
@@ -1544,7 +1539,7 @@ async def test_download_directory_concurrent(
 
 
 async def test_upload_directory_concurrent(
-    client: Client, responses: aioresponses, tmp_path: Any
+    client: Client, responses: aiointercept, tmp_path: Any
 ) -> None:
     """Test upload directory with concurrency > 1 uploads all files."""
     local_dir = Path(tmp_path) / "concurrent_ul"
