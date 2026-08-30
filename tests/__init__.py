@@ -10,7 +10,7 @@ def load_responses(filename: str) -> str:
     return path.read_text()
 
 
-async def upload_stream() -> AsyncGenerator[bytes, None]:
+async def upload_stream() -> AsyncGenerator[bytes]:
     """Generate a stream of bytes."""
     yield b"Hello, "
     yield b"world!"

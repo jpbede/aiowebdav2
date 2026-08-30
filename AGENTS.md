@@ -4,8 +4,23 @@
 
 ## Project Overview
 
-Async Python WebDAV client library. Python 3.11+, fully typed (`py.typed`), published to PyPI.
+Async Python WebDAV client library. Python 3.13+, fully typed (`py.typed`), published to PyPI.
 Package source lives in `aiowebdav2/`, tests in `tests/`.
+
+The 1.0 API is intentionally breaking and has clear ownership boundaries:
+
+- `aiowebdav2.client.Client` is remote-only WebDAV behavior.
+- `aiowebdav2.filesystem` owns local filesystem transfers.
+- `aiowebdav2._http` owns aiohttp transport, auth headers, proxy options, and
+  status-code mapping.
+- `aiowebdav2._xml` owns XML bytes/document boundaries and parser safety policy.
+- `aiowebdav2.models` owns model parsing and XML serialization.
+- `aiowebdav2._paths` owns path and URL normalization helpers.
+
+Do not reintroduce the old monolithic client shape (`Resource`, `LockClient`,
+`execute_request`, `list_files`, `download_file`, `upload_file`, `clean`, or
+`check` on `Client`). Add remote operations to `Client`; add local transfer
+helpers to `filesystem.py`.
 
 ## Build & Environment
 
@@ -27,13 +42,13 @@ uv run pytest
 uv run pytest tests/test_client.py
 
 # Run a single test function (use --no-cov for speed)
-uv run pytest tests/test_client.py::test_list_files -v --no-cov
+uv run pytest tests/test_client.py::test_list_and_stat -v --no-cov
 
 # Run tests matching a keyword pattern
 uv run pytest -k "test_quota" --no-cov
 
 # Run a specific parametrized case
-uv run pytest tests/test_client.py::test_list_files -k "server_path0" --no-cov
+uv run pytest tests/test_client.py::test_status_errors -k "401" --no-cov
 ```
 
 **Important:** `asyncio_mode = "auto"` — async test functions are detected automatically.
@@ -83,8 +98,8 @@ Three groups separated by blank lines, sorted alphabetically within each:
 import asyncio                              # 1. Standard library
 from pathlib import Path
 
-import aiofiles                             # 2. Third-party
-from aiohttp import BasicAuth
+from aiohttp import ClientTimeout           # 2. Third-party
+from lxml import etree
 
 from .exceptions import WebDavError         # 3. Local (relative imports)
 from .models import Property
@@ -107,13 +122,13 @@ from .models import Property
 | Element           | Convention           | Example                                 |
 | ----------------- | -------------------- | --------------------------------------- |
 | Variables         | `snake_case`         | `remote_path`, `local_file`             |
-| Functions/methods | `snake_case`         | `list_files()`, `execute_request()`     |
+| Functions/methods | `snake_case`         | `list()`, `download_file()`             |
 | Private members   | `_snake_case`        | `_list_raw()`, `_get_auth()`            |
 | Classes           | `PascalCase`         | `Client`, `ClientOptions`               |
 | Exceptions        | `PascalCase + Error` | `WebDavError`, `NoConnectionError`      |
 | Constants         | `UPPER_SNAKE_CASE`   | `DEFAULT_ROOT = "/"`                    |
 | Module loggers    | `_LOGGER`            | `_LOGGER = logging.getLogger(__name__)` |
-| Files/directories | `snake_case`         | `typing_helper.py`, `test_client.py`    |
+| Files/directories | `snake_case`         | `filesystem.py`, `test_client.py`       |
 
 ### Dataclasses
 
@@ -122,7 +137,7 @@ Always use the strict configuration:
 ```python
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ClientOptions:
-    send_speed: int | None = None
+    chunk_size: int = 65536
 ```
 
 ### Error Handling
@@ -157,6 +172,37 @@ f"Bearer {self._options.token}"
 - Explicit `__all__` in `__init__.py` listing every public symbol
 - `__init__.py` re-exports from submodules (barrel pattern)
 
+## 1.0 API Boundaries
+
+- `Client` public remote methods are `url`, `request`, `exists`, `stat`,
+  `is_dir`, `list`, `mkdir`, `delete`, `copy`, `move`, `read`, `iter_read`,
+  `write`, `quota`, `get_property`, `get_properties`, `list_properties`,
+  `set_property`, `set_properties`, `lock`, `unlock`, and `close`.
+- Local transfer helpers are public functions in `aiowebdav2.filesystem`:
+  `download_file`, `upload_file`, `download_tree`, and `upload_tree`.
+- Do not accept or pass `aiohttp.BasicAuth`. aiohttp v4 deprecates it for this
+  use case. Basic auth is generated internally from `username` and `password`
+  using the standard library. Bearer auth uses `ClientOptions(token=...)`.
+- Do not add `proxy_auth`; proxy credentials must be supplied through
+  `ClientOptions(proxy_headers=...)`.
+- Prefer the standard library over new dependencies. Do not re-add `aiofiles` or
+  `python-dateutil` unless there is a measured reason.
+
+## XML & Models
+
+- Use `lxml` for XML support, with minimum version `lxml>=6.1.0`.
+- All XML byte parsing goes through `_xml.parse_xml`, which enforces
+  `resolve_entities=False`, `no_network=True`, `load_dtd=False`, and
+  `huge_tree=False`.
+- Do not call `etree.fromstring` directly outside `_xml.parse_xml`.
+- Keep parsing and serialization close to the public models:
+  `ResourceInfo.from_response`, `QuotaInfo.from_element`,
+  `Property.from_response`, `PropertyRequest.append_to`, and
+  `Property.append_to`.
+- `_xml.py` should stay a thin WebDAV XML boundary: build request documents,
+  call `parse_xml`, iterate WebDAV response elements, and delegate extraction to
+  models.
+
 ## Testing Conventions
 
 - **Framework:** pytest with `pytest-asyncio` (auto mode) and `aiointercept`
@@ -171,11 +217,12 @@ f"Bearer {self._options.token}"
 - **Coverage:** Minimum 50% enforced (`fail_under = 50`)
 
 ```python
-async def test_list_files(client: Client, responses: aiointercept) -> None:
-    """Test list files."""
+async def test_list_and_stat(client: Client, responses: aiointercept) -> None:
+    """Test listing and stat."""
+    url = "https://webdav.example.com/test_dir/"
     responses.add(url, "PROPFIND", status=200, body=load_responses("get_list.xml"))
-    files = await client.list_files("/test_dir/")
-    assert len(files) == 2
+    resources = await client.list("/test_dir/")
+    assert len(resources) == 2
 ```
 
 ### Test-specific Ruff Overrides (`tests/ruff.toml`)
@@ -188,7 +235,7 @@ functions with many arguments (`PLR0913`).
 
 GitHub Actions includes PR/push workflows and release-only workflows:
 
-- **tests.yml** — pytest on Python 3.11, 3.12, 3.13
+- **tests.yml** — pytest on Python 3.13, 3.14, 3.15
 - **linting.yml** — ruff, codespell, pylint, yamllint, prettier
 - **typing.yml** — mypy strict checking
 - **release.yml** — builds and publishes to PyPI on GitHub release (`release.published`)

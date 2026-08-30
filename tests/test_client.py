@@ -1,11 +1,7 @@
-"""Tests for the client module."""
+"""Tests for the public remote client API."""
 
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator
 import io
-import os
-from pathlib import Path
-import re
-import time
 from typing import Any, cast
 
 import aiohttp
@@ -14,16 +10,14 @@ from multidict import CIMultiDict, CIMultiDictProxy
 import pytest
 import yarl
 
-from aiowebdav2 import Client
-from aiowebdav2.client import ClientOptions, _prune_paths
+from aiowebdav2 import Client, ClientOptions
 from aiowebdav2.exceptions import (
     AccessDeniedError,
     ConnectionExceptionError,
-    LocalResourceNotFoundError,
+    InvalidResponseError,
     MethodNotSupportedError,
     NoConnectionError,
     NotEnoughSpaceError,
-    OptionNotValidError,
     RemoteParentNotFoundError,
     RemoteResourceNotFoundError,
     ResourceLockedError,
@@ -32,810 +26,515 @@ from aiowebdav2.exceptions import (
 )
 from aiowebdav2.models import Property, PropertyRequest, QuotaInfo
 
-from . import load_responses, upload_stream
+from . import load_responses
 
 
-@pytest.mark.parametrize(
-    ("server_path", "response"),
-    [
-        (
-            "/",
-            load_responses("get_list.xml"),
-        ),
-        (
-            "/remote.php/webdav/",
-            load_responses("nextcloud/get_list.xml"),
-        ),
-        (
-            "/remote.php/webdav/test test/",
-            load_responses("nextcloud/get_list_with_spaces.xml"),
-        ),
-    ],
-)
-async def test_list_files(
-    get_client: Callable[[str], Client],
-    server_path: str,
-    response: str,
+class _StreamContent:
+    """Minimal response content stream for release tests."""
+
+    def __init__(self, chunks: list[bytes]) -> None:
+        """Initialize the stream."""
+        self._chunks = chunks
+
+    async def read(self, _chunk_size: int) -> bytes:
+        """Return the next response chunk."""
+        if not self._chunks:
+            return b""
+        return self._chunks.pop(0)
+
+
+class _StreamingResponse:
+    """Minimal aiohttp-like response for release tests."""
+
+    status = 200
+    method = "GET"
+
+    def __init__(self, chunks: list[bytes]) -> None:
+        """Initialize the response."""
+        self.content = _StreamContent(chunks)
+        self.headers: dict[str, str] = {}
+        self.released = False
+
+    async def read(self) -> bytes:
+        """Return the response body."""
+        body = b""
+        while chunk := await self.content.read(65536):
+            body += chunk
+        return body
+
+    def release(self) -> None:
+        """Release the response."""
+        self.released = True
+
+
+class _StreamingSession:
+    """Minimal aiohttp-like session for release tests."""
+
+    def __init__(self, response: _StreamingResponse) -> None:
+        """Initialize the session."""
+        self.response = response
+
+    async def request(self, **_kwargs: Any) -> _StreamingResponse:
+        """Return the configured response."""
+        return self.response
+
+    async def close(self) -> None:
+        """Close the session."""
+
+
+def _client_session(session: object) -> aiohttp.ClientSession:
+    """Cast a minimal test double to the aiohttp session interface."""
+    return cast("aiohttp.ClientSession", session)
+
+
+def test_client_can_be_constructed_without_running_loop() -> None:
+    """Test client construction does not eagerly create an aiohttp session."""
+    client = Client("https://webdav.example.com")
+
+    assert client._http.session is None
+
+
+@pytest.mark.usefixtures("default_response")
+async def test_list_and_stat(client: Client, responses: aiointercept) -> None:
+    """Test listing and stat metadata."""
+    responses.add(
+        "https://webdav.example.com/test_dir/test.txt",
+        "PROPFIND",
+        headers={"Accept": "*/*", "Depth": "0"},
+        content_type="application/xml",
+        status=207,
+        body=load_responses("is_dir_file.xml"),
+    )
+
+    listed = await client.list("/")
+    assert [item.path for item in listed] == ["/test_dir/", "/test_dir/test.txt"]
+    assert listed[0].is_dir
+
+    stat = await client.stat("/test_dir/test.txt")
+    assert stat.path == "/test_dir/test.txt"
+    assert stat.size == 41
+    assert stat.name == "test.txt"
+
+
+async def test_is_dir(client: Client, responses: aiointercept) -> None:
+    """Test is_dir uses stat metadata."""
+    responses.add(
+        "https://webdav.example.com/test_dir/",
+        "PROPFIND",
+        headers={"Accept": "*/*", "Depth": "0"},
+        content_type="application/xml",
+        status=207,
+        body=load_responses("is_dir_directory.xml"),
+    )
+
+    assert await client.is_dir("/test_dir/")
+
+
+async def test_list_recursive_with_base_path(
     responses: aiointercept,
 ) -> None:
-    """Test list files."""
+    """Test recursive listing strips URL base paths."""
     responses.clear()
     responses.add(
-        f"https://webdav.example.com{server_path}",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "1"},
-        content_type="application/xml",
-        status=200,
-        body=response,
-    )
-
-    client = get_client(server_path)
-
-    files = await client.list_files()
-    assert len(files) == 2
-    assert files == ["/test_dir/", "/test_dir/test.txt"]
-
-
-async def test_list_files_empty(client: Client, responses: aiointercept) -> None:
-    """Test list files with empty response."""
-    responses.clear()
-    responses.add(
-        "https://webdav.example.com",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "1"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("get_list_empty.xml"),
-    )
-
-    files = await client.list_files()
-    assert not files
-
-
-async def test_list_files_resource_not_found(
-    client: Client, responses: aiointercept
-) -> None:
-    """Test list files with parent not found."""
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "1"},
-        content_type="application/xml",
-        status=404,
-    )
-
-    with pytest.raises(RemoteResourceNotFoundError):
-        await client.list_files("/test_dir/")
-
-
-async def test_list_files_recursive(client: Client, responses: aiointercept) -> None:
-    """Test list files recursively."""
-    responses.add(
-        "https://webdav.example.com/test_dir/",
+        "https://webdav.example.com/remote.php/webdav/test%20test/",
         "PROPFIND",
         headers={"Accept": "*/*", "Depth": "infinity"},
         content_type="application/xml",
-        status=200,
-        body=load_responses("get_list_recursive.xml"),
+        status=207,
+        body=load_responses("nextcloud/get_list_with_spaces.xml"),
     )
 
-    files = await client.list_files("/test_dir/", recursive=True)
-    assert len(files) == 3
-    assert files == [
-        "/test_dir/test.txt",
-        "/test_dir/test_dir2/",
-        "/test_dir/test_dir2/test.txt",
-    ]
+    async with Client(
+        "https://webdav.example.com/remote.php/webdav/test test/",
+        username="user",
+        password="password",
+    ) as client:
+        listed = await client.list("/", recursive=True)
+
+    assert [item.path for item in listed] == ["/test_dir/", "/test_dir/test.txt"]
 
 
-async def test_list_with_infos(client: Client) -> None:
-    """Test list with infos."""
-    files = await client.list_with_infos()
-    assert len(files) == 2
-    assert files == [
-        {
-            "content_type": "httpd/unix-directory",
-            "created": "2020-04-10T21:59:43Z",
-            "etag": '"1000-5a2f6d9cf8d39"',
-            "isdir": "True",
-            "modified": "Fri, 10 Apr 2020 21:59:43 GMT",
-            "name": "",
-            "path": "/test_dir/",
-            "size": "",
-        },
-        {
-            "content_type": "text/plain",
-            "created": "2020-04-10T21:59:43Z",
-            "etag": '"29-5a2f6d9cf8d39"',
-            "isdir": "False",
-            "modified": "Fri, 10 Apr 2020 21:59:43 GMT",
-            "name": "",
-            "path": "/test_dir/test.txt",
-            "size": "41",
-        },
-    ]
+async def test_exists(client: Client, responses: aiointercept) -> None:
+    """Test existence checks."""
+    responses.add(
+        "https://webdav.example.com/test_dir/",
+        "PROPFIND",
+        status=207,
+        body=load_responses("is_dir_directory.xml"),
+    )
+    responses.add(
+        "https://webdav.example.com/missing.txt",
+        "PROPFIND",
+        status=404,
+    )
+    assert await client.exists("/test_dir/")
+    assert not await client.exists("/missing.txt")
 
 
-async def test_with_properties(client: Client, responses: aiointercept) -> None:
-    """Test list with properties."""
+async def test_mkdir_delete_copy_move(client: Client, responses: aiointercept) -> None:
+    """Test write-like WebDAV methods."""
+    responses.add("https://webdav.example.com/new/", "MKCOL", status=201)
+    responses.add("https://webdav.example.com/old.txt", "DELETE", status=204)
+    responses.add("https://webdav.example.com/a.txt", "COPY", status=201)
+    responses.add("https://webdav.example.com/b.txt", "MOVE", status=201)
+
+    await client.mkdir("/new/")
+    await client.delete("/old.txt")
+    await client.copy("/a.txt", "/copy.txt", depth="infinity", overwrite=False)
+    await client.move("/b.txt", "/moved.txt", overwrite=True)
+
+
+async def test_mkdir_parent_missing(
+    client: Client,
+    responses: aiointercept,
+) -> None:
+    """Test mkdir reports a missing parent."""
+    responses.add("https://webdav.example.com/missing/new/", "MKCOL", status=409)
+    responses.add("https://webdav.example.com/missing/", "PROPFIND", status=404)
+
+    with pytest.raises(RemoteParentNotFoundError):
+        await client.mkdir("/missing/new/")
+
+
+async def test_mkdir_parents_exist_ok(
+    client: Client,
+    responses: aiointercept,
+) -> None:
+    """Test recursive mkdir tolerates existing parents."""
+    responses.add("https://webdav.example.com/a/", "MKCOL", status=405)
+    responses.add(
+        "https://webdav.example.com/a/",
+        "PROPFIND",
+        status=207,
+        body=load_responses("is_dir_directory.xml").replace("/test_dir/", "/a/"),
+    )
+    responses.add("https://webdav.example.com/a/b/", "MKCOL", status=201)
+
+    await client.mkdir("/a/b/", parents=True)
+
+
+async def test_mkdir_exist_ok_missing_after_method_not_supported(
+    client: Client,
+    responses: aiointercept,
+) -> None:
+    """Test mkdir re-raises 405 when the directory does not exist."""
+    responses.add("https://webdav.example.com/a/", "MKCOL", status=405)
+    responses.add("https://webdav.example.com/a/", "PROPFIND", status=404)
+
+    with pytest.raises(MethodNotSupportedError):
+        await client.mkdir("/a/", exist_ok=True)
+
+
+async def test_read_iter_read_and_write(
+    client: Client,
+    responses: aiointercept,
+) -> None:
+    """Test reading and writing bytes."""
+    responses.add(
+        "https://webdav.example.com/file.txt", "GET", body=b"content", status=200
+    )
+    assert await client.read("/file.txt") == b"content"
+
+    responses.add(
+        "https://webdav.example.com/file.txt", "GET", body=b"stream", status=200
+    )
+    chunks = [chunk async for chunk in client.iter_read("/file.txt")]
+    assert chunks == [b"stream"]
+
+    async def stream() -> AsyncGenerator[bytes]:
+        yield b"new "
+        yield b"content"
+
+    async def callback(_url: str, **kwargs: Any) -> CallbackResult:
+        assert kwargs["headers"]["Content-Length"] == "11"
+        assert kwargs["data"] == b"new content"
+        return CallbackResult(status=201)
+
+    responses.add("https://webdav.example.com/file.txt", "PUT", callback=callback)
+    await client.write("/file.txt", stream(), content_length=11)
+
+
+async def test_iter_read_releases_response_on_early_close() -> None:
+    """Test streamed responses are released when callers stop early."""
+    response = _StreamingResponse([b"first", b"second"])
+    client = Client(
+        "https://webdav.example.com",
+        options=ClientOptions(session=_client_session(_StreamingSession(response))),
+    )
+    stream = cast("AsyncGenerator[bytes]", client.iter_read("/file.txt"))
+
+    assert await anext(stream) == b"first"
+    await stream.aclose()
+
+    assert response.released
+
+
+async def test_discarded_response_is_released() -> None:
+    """Test mutation helpers release responses they do not read."""
+    response = _StreamingResponse([])
+    client = Client(
+        "https://webdav.example.com",
+        options=ClientOptions(session=_client_session(_StreamingSession(response))),
+    )
+
+    await client.delete("/file.txt")
+
+    assert response.released
+
+
+async def test_write_parent_missing(
+    client: Client,
+    responses: aiointercept,
+) -> None:
+    """Test write reports a missing parent."""
+    responses.add("https://webdav.example.com/missing/file.txt", "PUT", status=409)
+    responses.add("https://webdav.example.com/missing/", "PROPFIND", status=404)
+
+    with pytest.raises(RemoteParentNotFoundError):
+        await client.write("/missing/file.txt", b"data")
+
+
+async def test_quota_and_properties(client: Client, responses: aiointercept) -> None:
+    """Test quota and property methods."""
     responses.clear()
     responses.add(
         "https://webdav.example.com/",
         "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
+        headers={"Accept": "*/*", "Depth": "0", "Content-Type": "text/xml"},
+        status=207,
+        body=load_responses("free_space.xml"),
+    )
+    assert await client.quota() == QuotaInfo(
+        available_bytes=10737417543, used_bytes=697
+    )
+
+    responses.add(
+        "https://webdav.example.com/file.txt",
+        "PROPFIND",
+        headers={"Accept": "*/*", "Depth": "0", "Content-Type": "text/xml"},
+        status=207,
+        body=load_responses("get_property.xml"),
+    )
+    request = PropertyRequest(namespace="test", name="aProperty")
+    assert await client.get_property("/file.txt", request) == Property(
+        namespace="test",
+        name="aProperty",
+        value="aValue",
+    )
+
+    responses.add(
+        "https://webdav.example.com/",
+        "PROPFIND",
+        headers={"Accept": "*/*", "Depth": "1", "Content-Type": "text/xml"},
         status=207,
         body=load_responses("list_with_properties.xml"),
     )
+    prop_map = await client.list_properties("/", properties=[request])
+    assert prop_map["/test_dir/test.txt"][0].value == "aValue"
 
-    props = await client.list_with_properties(
-        properties=[
-            PropertyRequest(namespace="test", name="aProperty"),
-            PropertyRequest(namespace="test2", name="anotherProperty"),
-        ],
-    )
-    assert props == {
-        "/test_dir/test.txt": [
-            Property(
-                name="aProperty",
-                namespace="test",
-                value="aValue",
-            ),
-            Property(
-                name="anotherProperty",
-                namespace="test2",
-                value="anotherValue",
-            ),
-        ],
-        "/test_dir/test2.txt": [
-            Property(
-                name="aProperty",
-                namespace="test",
-                value="aValue2",
-            ),
-            Property(
-                name="anotherProperty",
-                namespace="test2",
-                value="anotherValue2",
-            ),
-        ],
-    }
-
-
-async def test_info(client: Client, responses: aiointercept) -> None:
-    """Test info."""
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("get_info.xml"),
-    )
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("is_dir_file.xml"),
-    )
-
-    info = await client.info("/test_dir/test.txt")
-    assert info == {
-        "content_type": "text/plain",
-        "created": "2017-10-18T15:16:04Z",
-        "etag": "ab0b4b7973803c03639b848682b5f38c",
-        "modified": "Wed, 18 Oct 2017 15:16:04 GMT",
-        "name": "test.txt",
-        "size": "41",
-    }
-
-
-async def test_clean(client: Client, responses: aiointercept) -> None:
-    """Test clean."""
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "DELETE",
-        status=204,
-    )
-
-    await client.clean("/test_dir/test.txt")
-
-
-async def test_get_property(client: Client, responses: aiointercept) -> None:
-    """Test get property."""
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("get_property.xml"),
-    )
-
-    prop = await client.get_property(
-        "/test_dir/test.txt", PropertyRequest(namespace="test", name="aProperty")
-    )
-    assert prop
-    assert prop.value == "aValue"
-
-
-async def test_set_property(client: Client, responses: aiointercept) -> None:
-    """Test set property."""
-
-    def callback(_url: str, **kwargs: dict[str, Any]) -> CallbackResult:
-        assert kwargs["headers"]["Content-Type"].strip() == "text/xml"
-        assert kwargs["headers"]["Accept"].strip() == "*/*"
-        assert kwargs["headers"]["Depth"].strip() == "0"
-        assert kwargs["data"] == (
-            b"<?xml version='1.0' encoding='UTF-8'?>\n"
-            b'<propertyupdate xmlns="DAV:"><set><prop>'
-            b'<aProperty xmlns="test">aValue</aProperty>'
-            b"</prop></set></propertyupdate>"
-        )
-
-        return CallbackResult(status=207)
-
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PROPPATCH",
-        headers={"Accept": "*/*"},
-        callback=callback,
-    )
-
+    responses.add("https://webdav.example.com/file.txt", "PROPPATCH", status=207)
     await client.set_property(
-        "/test_dir/test.txt",
-        Property(namespace="test", name="aProperty", value="aValue"),
+        "/file.txt",
+        Property(namespace="test", name="aProperty", value="new"),
     )
 
 
-async def test_mkdir(client: Client, responses: aiointercept) -> None:
-    """Test mkdir."""
+async def test_lock_context(client: Client, responses: aiointercept) -> None:
+    """Test lock context unlocks and applies lock token to writes."""
     responses.add(
-        "https://webdav.example.com/test_dir/",
-        "PROPFIND",
+        "https://webdav.example.com/file.txt",
+        "LOCK",
         status=200,
-        body=load_responses("is_dir_file.xml"),
-    )
-    responses.add(
-        "https://webdav.example.com/test_dir/test_dir2/",
-        "MKCOL",
-        headers={"Accept": "*/*"},
-        status=201,
+        headers={"Lock-Token": "<token>"},
     )
 
-    await client.mkdir("/test_dir/test_dir2")
+    async def write_callback(_url: str, **kwargs: Any) -> CallbackResult:
+        assert kwargs["headers"]["If"] == "(<token>)"
+        return CallbackResult(status=204)
+
+    responses.add("https://webdav.example.com/file.txt", "PUT", callback=write_callback)
+    responses.add("https://webdav.example.com/file.txt", "UNLOCK", status=204)
+
+    async with await client.lock("/file.txt") as lock:
+        await lock.write(b"content", content_length=7)
 
 
-async def test_free(client: Client, responses: aiointercept) -> None:
-    """Test free."""
-    responses.clear()
-    responses.add(
-        "https://webdav.example.com",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("free_space.xml"),
-    )
-
-    free = await client.free()
-    assert free == 10737417543
-
-
-async def test_free_not_supported(client: Client, responses: aiointercept) -> None:
-    """Test free not supported."""
-    responses.clear()
-    responses.add(
-        "https://webdav.example.com",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("free_space_not_supported.xml"),
-    )
-
-    with pytest.raises(MethodNotSupportedError):
-        await client.free()
-
-
-async def test_quota(client: Client, responses: aiointercept) -> None:
-    """Test quota returns both available and used bytes."""
-    responses.clear()
-    responses.add(
-        "https://webdav.example.com",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("free_space.xml"),
-    )
-
-    info = await client.quota()
-    assert info == QuotaInfo(available_bytes=10737417543, used_bytes=697)
-
-
-async def test_quota_not_supported(client: Client, responses: aiointercept) -> None:
-    """Test quota raises when server does not support quota properties."""
-    responses.clear()
-    responses.add(
-        "https://webdav.example.com",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("free_space_not_supported.xml"),
-    )
-
-    with pytest.raises(MethodNotSupportedError):
-        await client.quota()
-
-
-async def test_quota_used_only(client: Client, responses: aiointercept) -> None:
-    """Test quota when server only provides used bytes."""
-    responses.clear()
-    responses.add(
-        "https://webdav.example.com",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("quota_used_only.xml"),
-    )
-
-    info = await client.quota()
-    assert info == QuotaInfo(available_bytes=None, used_bytes=697)
-
-
-async def test_upload_iter(client: Client, responses: aiointercept) -> None:
-    """Test upload iter."""
-
-    async def callback(_url: str, **kwargs: Any) -> CallbackResult:
-        assert kwargs["data"] == b"Hello, world!"
-        return CallbackResult(status=201)
-
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PUT",
-        headers={"Accept": "*/*"},
-        callback=callback,
-    )
-
-    async def stream() -> AsyncGenerator[bytes, None]:
-        yield b"Hello, "
-        yield b"world!"
-
-    await client.upload_iter(stream(), "/test_dir/test.txt")
-
-
-async def test_upload_iter_progress(client: Client, responses: aiointercept) -> None:
-    """Test upload iter progress."""
-
-    async def callback(_url: str, **kwargs: Any) -> CallbackResult:
-        assert kwargs["data"] == b"Hello, world!"
-        return CallbackResult(status=201)
-
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PUT",
-        headers={"Accept": "*/*"},
-        callback=callback,
-    )
-
-    progress_calls: list[tuple[int, int | None]] = []
-
-    def on_progress(current: int, total: int | None) -> None:
-        progress_calls.append((current, total))
-
-    async def stream() -> AsyncGenerator[bytes, None]:
-        yield b"Hello, "
-        yield b"world!"
-
-    await client.upload_iter(
-        stream(),
-        "/test_dir/test.txt",
-        content_length=13,
-        progress=on_progress,
-    )
-    assert progress_calls == [(0, 13), (7, 13), (13, 13)]
-
-
-async def test_upload_iter_progress_no_content_length(
-    client: Client, responses: aiointercept
+async def test_lock_missing_token_raises(
+    client: Client,
+    responses: aiointercept,
 ) -> None:
-    """Test upload iter progress without content length."""
+    """Test lock requires a Lock-Token response header."""
+    responses.add("https://webdav.example.com/file.txt", "LOCK", status=200)
 
-    async def callback(_url: str, **kwargs: Any) -> CallbackResult:
-        assert kwargs["data"] == b"Hello, world!"
-        return CallbackResult(status=201)
+    with pytest.raises(InvalidResponseError, match="missing Lock-Token"):
+        await client.lock("/file.txt")
 
+
+async def test_lock_read_helpers(client: Client, responses: aiointercept) -> None:
+    """Test lock read helpers."""
     responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PUT",
-        headers={"Accept": "*/*"},
-        callback=callback,
+        "https://webdav.example.com/file.txt",
+        "LOCK",
+        status=200,
+        headers={"Lock-Token": "<token>"},
     )
-
-    progress_calls: list[tuple[int, int | None]] = []
-
-    def on_progress(current: int, total: int | None) -> None:
-        progress_calls.append((current, total))
-
-    async def stream() -> AsyncGenerator[bytes, None]:
-        yield b"Hello, "
-        yield b"world!"
-
-    await client.upload_iter(
-        stream(),
-        "/test_dir/test.txt",
-        progress=on_progress,
-    )
-    assert progress_calls == [(0, None), (7, None), (13, None)]
-
-
-async def test_upload_iter_progress_unsupported_buffer(
-    client: Client, responses: aiointercept, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Test upload iter progress logs warning for unsupported buffer."""
     responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PUT",
-        headers={"Accept": "*/*"},
-        status=201,
-    )
-
-    progress_calls: list[tuple[int, int | None]] = []
-
-    def on_progress(current: int, total: int | None) -> None:
-        progress_calls.append((current, total))
-
-    caplog.set_level("WARNING", logger="aiowebdav2.client")
-    await client.upload_iter(
-        io.BytesIO(b"Hello, world!"),
-        "/test_dir/test.txt",
-        content_length=13,
-        progress=on_progress,
-    )
-
-    assert not progress_calls
-    assert any(
-        (
-            "Progress callback is only supported for AsyncIterator buffers, "
-            "ignoring progress for BytesIO"
-        )
-        in record.getMessage()
-        for record in caplog.records
-    )
-
-
-async def test_download_iter(client: Client, responses: aiointercept) -> None:
-    """Test download iter."""
-
-    async def callback(_url: str, **_kwargs: dict[str, Any]) -> CallbackResult:
-        return CallbackResult(status=200, body=b"Hello, world!")
-
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
+        "https://webdav.example.com/file.txt",
         "GET",
-        headers={"Accept": "*/*"},
-        callback=callback,
-    )
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
+        body=b"content",
         status=200,
-        body=load_responses("is_dir_file.xml"),
-    )
-
-    async for chunk in await client.download_iter("/test_dir/test.txt"):
-        assert chunk == b"Hello, world!"
-
-
-async def test_move(client: Client, responses: aiointercept) -> None:
-    """Test move."""
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "MOVE",
-        headers={
-            "Accept": "*/*",
-            "Destination": "https://webdav.example.com/test_dir/test2.txt",
-        },
-        status=201,
-    )
-
-    await client.move("/test_dir/test.txt", "/test_dir/test2.txt")
-
-
-async def test_check(client: Client, responses: aiointercept) -> None:
-    """Test check."""
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("is_dir_file.xml"),
-    )
-
-    assert await client.check("/test_dir/test.txt")
-
-
-async def test_copy(client: Client, responses: aiointercept) -> None:
-    """Test copy."""
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "COPY",
-        headers={
-            "Accept": "*/*",
-            "Destination": "https://webdav.example.com/test_dir/test2.txt",
-        },
-        status=201,
     )
     responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("is_dir_file.xml"),
-    )
-
-    await client.copy("/test_dir/test.txt", "/test_dir/test2.txt")
-
-
-async def test_is_dir_not_supported(client: Client, responses: aiointercept) -> None:
-    """Test is_dir not supported."""
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("is_dir_directory_not_supported.xml"),
-    )
-
-    with pytest.raises(MethodNotSupportedError):
-        await client.is_dir("/test_dir/")
-
-
-async def test_get_properties(client: Client, responses: aiointercept) -> None:
-    """Test get properties."""
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("get_property.xml"),
-    )
-
-    props = await client.get_properties(
-        "/test_dir/test.txt",
-        [
-            PropertyRequest(namespace="test", name="aProperty"),
-            PropertyRequest(namespace="test2", name="anotherProperty"),
-        ],
-    )
-    assert props == [
-        Property(
-            name="aProperty",
-            namespace="test",
-            value="aValue",
-        ),
-        Property(
-            name="anotherProperty",
-            namespace="test2",
-            value="anotherValue",
-        ),
-    ]
-
-
-async def test_client_with_internal_session() -> None:
-    """Test client with internal session."""
-    async with Client(
-        url="https://webdav.example.com",
-        username="user",
-        password="password",
-    ) as c:
-        assert c._session is not None
-
-    assert c._session.closed
-
-
-async def test_client_with_external_session() -> None:
-    """Test client with external session."""
-    external_session = aiohttp.ClientSession()
-    async with Client(
-        url="https://webdav.example.com",
-        username="user",
-        password="password",
-        options=ClientOptions(session=external_session),
-    ) as c:
-        assert c._session is not None
-        assert c._session is external_session
-
-    assert not c._session.closed
-
-    await external_session.close()
-    assert external_session.closed
-    assert c._session.closed
-
-
-async def test_unauthorized(client: Client, responses: aiointercept) -> None:
-    """Test unauthorized."""
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=401,
-    )
-
-    with pytest.raises(
-        UnauthorizedError,
-        match=re.escape("Unauthorized access to https://webdav.example.com"),
-    ):
-        await client.info("/test_dir/test.txt")
-
-
-async def test_access_denied(client: Client, responses: aiointercept) -> None:
-    """Test access denied."""
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=403,
-    )
-
-    with pytest.raises(
-        AccessDeniedError,
-        match=re.escape("Access denied to https://webdav.example.com"),
-    ):
-        await client.info("/test_dir/test.txt")
-
-
-async def test_upload_iter_content_length(
-    client: Client, responses: aiointercept
-) -> None:
-    """Test upload iter with content length."""
-
-    async def callback(_url: str, **kwargs: Any) -> CallbackResult:
-        assert kwargs["headers"]["Content-Length"].strip() == "12"
-        return CallbackResult(status=201)
-
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PUT",
-        headers={"Accept": "*/*"},
-        callback=callback,
-    )
-
-    await client.upload_iter(upload_stream(), "/test_dir/test.txt", content_length=12)
-
-
-async def test_upload_iter_not_enough_space(
-    client: Client, responses: aiointercept
-) -> None:
-    """Test upload iter with not enough space."""
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PUT",
-        headers={"Accept": "*/*"},
-        status=507,
-    )
-
-    with pytest.raises(NotEnoughSpaceError):
-        await client.upload_iter(
-            upload_stream(), "/test_dir/test.txt", content_length=12
-        )
-
-
-async def test_upload_iter_on_dir_fails(
-    client: Client, responses: aiointercept
-) -> None:
-    """Test upload iter on a directory."""
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "PUT",
-        headers={"Accept": "*/*"},
-        status=409,
-    )
-
-    with pytest.raises(OptionNotValidError):
-        await client.upload_iter(upload_stream(), "/test_dir/")
-
-
-async def test_upload_iter_parent_missing(responses: aiointercept) -> None:
-    """Test upload iter on a directory."""
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PUT",
-        headers={"Accept": "*/*"},
-        status=409,
-    )
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "PROPFIND",
-        headers={"Accept": "*/*"},
-        status=404,
-    )
-    responses.add(
-        "https://webdav.example.com/",
-        "PROPFIND",
-        headers={"Accept": "*/*"},
-        status=207,
-    )
-
-    async with Client(
-        url="https://webdav.example.com",
-        username="user",
-        password="password",
-    ) as client:
-        with pytest.raises(
-            RemoteParentNotFoundError,
-            match=re.escape("Remote parent for: /test_dir/test.txt not found"),
-        ):
-            await client.upload_iter(upload_stream(), "/test_dir/test.txt")
-
-
-async def test_prune_paths_helper() -> None:
-    """Test prune paths helper."""
-    assert _prune_paths(["/root/file", "/root/dir"], "/root/") == [
-        "file",
-        "dir",
-    ]
-
-
-async def test_get_headers_with_token() -> None:
-    """Test get headers with token."""
-    async with Client(
-        url="https://webdav.example.com",
-        username="",
-        password="",
-        options=ClientOptions(token="mytoken"),
-    ) as client:
-        headers = client.get_headers("list")
-        assert headers["Authorization"] == "Bearer mytoken"
-
-
-async def test_execute_request_uses_basic_auth_header(
-    client: Client, responses: aiointercept
-) -> None:
-    """Test execute request uses basic auth header."""
-
-    def callback(_url: str, **kwargs: dict[str, Any]) -> CallbackResult:
-        assert kwargs["headers"]["Authorization"] == "Basic dXNlcjpwYXNzd29yZA=="
-        return CallbackResult(status=200)
-
-    responses.add(
-        "https://webdav.example.com/test.txt",
+        "https://webdav.example.com/file.txt",
         "GET",
-        callback=callback,
+        body=b"stream",
+        status=200,
     )
+    responses.add("https://webdav.example.com/file.txt", "UNLOCK", status=204)
 
-    await client.execute_request("download", "/test.txt")
+    async with await client.lock("/file.txt") as lock:
+        assert await lock.read() == b"content"
+        assert [chunk async for chunk in lock.iter_read()] == [b"stream"]
 
 
-async def test_execute_request_connection_error(responses: aiointercept) -> None:
-    """Test execute request connection error."""
-    responses.add(
-        "https://webdav.example.com/fail",
-        "PROPFIND",
-        exception=True,
-    )
+async def test_auth_and_session_lifetime(responses: aiointercept) -> None:
+    """Test auth headers and owned/external sessions."""
+    responses.add("https://webdav.example.com/file.txt", "GET", status=200)
     async with Client(
-        url="https://webdav.example.com", username="u", password="p"
+        "https://webdav.example.com",
+        options=ClientOptions(token="token"),
     ) as client:
+        assert client._http.headers()["Authorization"] == "Bearer token"
+        await client.read("/file.txt")
+    assert client._http.session is not None
+    assert client._http.session.closed
+
+    session = aiohttp.ClientSession()
+    async with Client(
+        "https://webdav.example.com",
+        options=ClientOptions(session=session),
+    ) as client:
+        assert client._http.session is session
+    assert not session.closed
+    await session.close()
+
+
+async def test_basic_auth_header_and_invalid_username() -> None:
+    """Test basic auth header generation."""
+    async with Client(
+        "https://webdav.example.com", username="user", password="pass"
+    ) as client:
+        assert client._http.headers()["Authorization"].startswith("Basic ")
+
+    async with Client(
+        "https://webdav.example.com", username="bad:name", password="pass"
+    ) as client:
+        with pytest.raises(ValueError, match='A ":" is not allowed'):
+            client._http.headers()
+
+
+async def test_configured_auth_allows_http_origins() -> None:
+    """Test configured auth can be sent to HTTP origins."""
+    async with Client("http://webdav.example.com") as client:
+        assert "Authorization" not in client._http.headers()
+
+    async with Client(
+        "http://webdav.example.com",
+        options=ClientOptions(token="token"),
+    ) as client:
+        assert client._http.headers()["Authorization"] == "Bearer token"
+
+    async with Client(
+        "http://webdav.example.com",
+        username="user",
+        password="pass",
+    ) as client:
+        assert client._http.headers()["Authorization"].startswith("Basic ")
+
+
+async def test_proxy_headers_are_forwarded() -> None:
+    """Test proxy headers option is passed to aiohttp."""
+
+    class Response:
+        """Minimal response for transport argument assertions."""
+
+        status = 200
+        method = "GET"
+
+        async def read(self) -> bytes:
+            """Return an empty body."""
+            return b""
+
+    class ProxySession:
+        """Session that records request kwargs."""
+
+        def __init__(self) -> None:
+            """Initialize the session."""
+            self.kwargs: dict[str, Any] | None = None
+
+        async def request(self, **kwargs: Any) -> Response:
+            """Record request kwargs."""
+            self.kwargs = kwargs
+            return Response()
+
+        async def close(self) -> None:
+            """Close the session."""
+
+    session = ProxySession()
+
+    async with Client(
+        "https://webdav.example.com",
+        options=ClientOptions(
+            session=_client_session(session),
+            proxy="http://proxy.example.com",
+            proxy_headers={"Proxy-Authorization": "Basic proxy"},
+        ),
+    ) as client:
+        await client.read("/file.txt")
+
+    assert session.kwargs
+    assert session.kwargs["proxy"] == "http://proxy.example.com"
+    assert session.kwargs["proxy_headers"] == {"Proxy-Authorization": "Basic proxy"}
+
+
+@pytest.mark.parametrize(
+    ("status", "error"),
+    [
+        (401, UnauthorizedError),
+        (403, AccessDeniedError),
+        (404, RemoteResourceNotFoundError),
+        (405, MethodNotSupportedError),
+        (423, ResourceLockedError),
+        (507, NotEnoughSpaceError),
+        (500, ResponseErrorCodeError),
+    ],
+)
+async def test_status_errors(
+    status: int,
+    error: type[Exception],
+    responses: aiointercept,
+) -> None:
+    """Test status code mapping."""
+    responses.add(
+        "https://webdav.example.com/fail.txt", "GET", status=status, body=b"no"
+    )
+
+    async with Client("https://webdav.example.com") as client:
+        with pytest.raises(error):
+            await client.read("/fail.txt")
+
+
+async def test_connection_errors(responses: aiointercept) -> None:
+    """Test transport exception mapping."""
+    responses.add("https://webdav.example.com/fail.txt", "GET", exception=True)
+
+    async with Client("https://webdav.example.com") as client:
         with pytest.raises(NoConnectionError):
-            await client.check("/fail")
+            await client.read("/fail.txt")
 
 
-async def test_execute_request_response_error() -> None:
-    """Test execute request response error."""
+async def test_response_error_mapping() -> None:
+    """Test aiohttp response errors are mapped."""
 
     class ResponseErrorSession:
         """Session that raises a response error."""
@@ -847,781 +546,27 @@ async def test_execute_request_response_error() -> None:
             raise aiohttp.ClientResponseError(
                 request_info=aiohttp.RequestInfo(
                     url=yarl.URL("https://webdav.example.com/fail"),
-                    method="PROPFIND",
+                    method="GET",
                     headers=CIMultiDictProxy(CIMultiDict()),
                     real_url=yarl.URL("https://webdav.example.com/fail"),
                 ),
                 history=(),
             )
 
+        async def close(self) -> None:
+            """Close the session."""
+
     async with Client(
-        url="https://webdav.example.com",
-        username="u",
-        password="p",
-        options=ClientOptions(
-            session=cast("aiohttp.ClientSession", ResponseErrorSession())
-        ),
+        "https://webdav.example.com",
+        options=ClientOptions(session=_client_session(ResponseErrorSession())),
     ) as client:
         with pytest.raises(ConnectionExceptionError):
-            await client.check("/fail")
+            await client.read("/fail.txt")
 
 
-async def test_execute_request_locked(responses: aiointercept) -> None:
-    """Test execute request locked."""
-    responses.add(
-        "https://webdav.example.com/locked.txt",
-        "PROPFIND",
-        status=423,
-    )
-    async with Client(
-        url="https://webdav.example.com", username="u", password="p"
-    ) as client:
-        with pytest.raises(ResourceLockedError):
-            await client.check("/locked.txt")
-
-
-async def test_execute_request_method_not_supported(responses: aiointercept) -> None:
-    """Test execute request method not supported."""
-    responses.add(
-        "https://webdav.example.com/method.txt",
-        "PROPFIND",
-        status=405,
-    )
-    async with Client(
-        url="https://webdav.example.com", username="u", password="p"
-    ) as client:
-        with pytest.raises(MethodNotSupportedError):
-            await client.check("/method.txt")
-
-
-async def test_execute_request_generic_error(responses: aiointercept) -> None:
-    """Test execute request generic error."""
-    responses.add(
-        "https://webdav.example.com/error.txt",
-        "PROPFIND",
-        status=418,
-        body=b"teapot",
-    )
-    async with Client(
-        url="https://webdav.example.com", username="u", password="p"
-    ) as client:
-        with pytest.raises(ResponseErrorCodeError):
-            await client.check("/error.txt")
-
-
-async def test_list_with_infos_recursive(
+async def test_request_accepts_file_like(
     client: Client, responses: aiointercept
 ) -> None:
-    """Test list with infos recursive."""
-    responses.clear()
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "infinity"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("get_list_recursive.xml"),
-    )
-
-    files = await client.list_with_infos("/test_dir/", recursive=True)
-    assert len(files) == 3
-    assert files[0]["path"].startswith("/test_dir/")
-
-
-async def test_list_with_properties_none(
-    client: Client, responses: aiointercept
-) -> None:
-    """Test list with properties none."""
-    responses.clear()
-    responses.add(
-        "https://webdav.example.com/",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "1"},
-        content_type="application/xml",
-        status=207,
-        body=load_responses("list_with_properties.xml"),
-    )
-    props = await client.list_with_properties(properties=None)
-    assert "/test_dir/test.txt" in props
-
-
-async def test_stream_with_progress_sync_and_async(
-    client: Client, responses: aiointercept
-) -> None:
-    """Test stream with progress sync and async."""
-    responses.add(
-        "https://webdav.example.com/test.txt",
-        "GET",
-        body=b"content",
-        headers={"content-length": "7"},
-        status=200,
-    )
-    response = await client.execute_request("download", "/test.txt")
-    output = io.BytesIO()
-    sync_calls = []
-
-    def sync_progress(current: int, total: int | None) -> None:
-        sync_calls.append((current, total))
-
-    await client._stream_with_progress(response, output.write, sync_progress)
-    assert output.getvalue() == b"content"
-    assert sync_calls[0] == (0, 7)
-
-    responses.add(
-        "https://webdav.example.com/test2.txt",
-        "GET",
-        body=b"async",
-        headers={"content-length": "5"},
-        status=200,
-    )
-    response_async = await client.execute_request("download", "/test2.txt")
-    output_async = io.BytesIO()
-    async_calls = []
-
-    async def async_progress(current: int, total: int | None) -> None:
-        async_calls.append((current, total))
-
-    await client._stream_with_progress(
-        response_async, output_async.write, async_progress
-    )
-    assert output_async.getvalue() == b"async"
-    assert async_calls[0] == (0, 5)
-
-
-async def test_download_from_with_progress(
-    client: Client, responses: aiointercept
-) -> None:
-    """Test download from with progress."""
-    responses.add(
-        "https://webdav.example.com/test.txt",
-        "GET",
-        body=b"file content",
-        headers={"content-length": "12"},
-        status=200,
-    )
-    progress_calls = []
-
-    def on_progress(current: int, total: int | None) -> None:
-        progress_calls.append((current, total))
-
-    buff = io.BytesIO()
-    await client.download_from(buff, "/test.txt", progress=on_progress)
-    assert buff.getvalue() == b"file content"
-    assert progress_calls[0] == (0, 12)
-
-
-async def test_download_dispatch_file_and_dir(
-    client: Client, responses: aiointercept, tmp_path: Any
-) -> None:
-    """Test download dispatch file and dir."""
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "1"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("get_list.xml"),
-    )
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "GET",
-        body=b"file content",
-        headers={"content-length": "12"},
-        status=200,
-    )
-    responses.add(
-        "https://webdav.example.com/test.txt",
-        "GET",
-        body=b"root file",
-        headers={"content-length": "9"},
-        status=200,
-    )
-
-    local_dir = Path(tmp_path) / "download_dir"
-    await client.download("/test_dir/", local_dir)
-    assert ((local_dir / "test.txt").read_bytes()) == b"file content"
-
-    local_file = Path(tmp_path) / "test.txt"
-    await client.download("/test.txt", local_file)
-    assert (local_file.read_bytes()) == b"root file"
-
-
-async def test_download_directory_removes_existing(
-    client: Client, responses: aiointercept, tmp_path: Any
-) -> None:
-    """Test download directory removes existing."""
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "1"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("get_list.xml"),
-    )
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "GET",
-        body=b"file content",
-        headers={"content-length": "12"},
-        status=200,
-    )
-
-    local_dir = Path(tmp_path) / "download_dir"
-    local_dir.mkdir(parents=True)
-    (local_dir / "old.txt").write_text("old")
-
-    await client.download_directory("/test_dir/", local_dir)
-    assert not (local_dir / "old.txt").exists()
-    assert (local_dir / "test.txt").exists()
-
-
-async def test_download_file_rejects_directory(client: Client, tmp_path: Any) -> None:
-    """Test download file rejects directory."""
-    local_dir = Path(tmp_path) / "target_dir"
-    local_dir.mkdir(parents=True)
-    with pytest.raises(OptionNotValidError):
-        await client.download_file("/test.txt", local_dir)
-
-
-async def test_upload_dispatch_file_and_dir(
-    client: Client, responses: aiointercept, tmp_path: Any
-) -> None:
-    """Test upload dispatch file and dir."""
-    local_dir = Path(tmp_path) / "upload_dir"
-    local_dir.mkdir(parents=True)
-    local_file = local_dir / "test.txt"
-    local_file.write_text("content")
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "MKCOL",
-        headers={"Accept": "*/*", "Connection": "Keep-Alive"},
-        status=201,
-    )
-
-    def upload_callback(_url: str, **_kwargs: dict[str, Any]) -> CallbackResult:
-        return CallbackResult(status=201)
-
-    responses.add(
-        re.compile(r"https://webdav\.example\.com/test_dir/.+"),
-        "PUT",
-        headers={"Accept": "*/*"},
-        callback=upload_callback,
-    )
-    await client.upload("/test_dir/", local_dir)
-
-    responses.add(
-        "https://webdav.example.com/test.txt",
-        "PUT",
-        headers={"Accept": "*/*"},
-        status=201,
-    )
-    await client.upload("/test.txt", local_file)
-
-
-async def test_upload_directory_validations(
-    client: Client, responses: aiointercept, tmp_path: Any
-) -> None:
-    """Test upload directory validations."""
-    local_dir = Path(tmp_path) / "local"
-    with pytest.raises(LocalResourceNotFoundError):
-        await client.upload_directory("/test_dir", local_dir)
-
-    local_dir.mkdir(parents=True)
-    with pytest.raises(LocalResourceNotFoundError):
-        await client.upload_directory("/test_dir/", local_dir / "file.txt")
-
-    missing_dir = Path(tmp_path) / "missing"
-    with pytest.raises(LocalResourceNotFoundError):
-        await client.upload_directory("/test_dir/", missing_dir)
-
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "MKCOL",
-        headers={"Accept": "*/*", "Connection": "Keep-Alive"},
-        status=201,
-    )
-    (local_dir / "one.txt").write_text("one")
-    responses.add(
-        re.compile(r"https://webdav\.example\.com/test_dir/.+"),
-        "PUT",
-        headers={"Accept": "*/*"},
-        status=201,
-    )
-    await client.upload_directory("/test_dir/", local_dir)
-
-
-async def test_upload_directory_uses_filename_not_full_path(
-    client: Client, responses: aiointercept, tmp_path: Any
-) -> None:
-    """Test upload directory constructs remote paths from filename, not full local path."""
-    local_dir = Path(tmp_path) / "upload_src"
-    local_dir.mkdir(parents=True)
-    (local_dir / "hello.txt").write_text("data")
-
-    responses.add(
-        "https://webdav.example.com/dest/",
-        "MKCOL",
-        status=201,
-    )
-
-    uploaded_urls: list[str] = []
-
-    def upload_callback(_url: str, **_kwargs: dict[str, Any]) -> CallbackResult:
-        uploaded_urls.append(str(_url))
-        return CallbackResult(status=201)
-
-    responses.add(
-        re.compile(r"https://webdav\.example\.com/dest/.+"),
-        "PUT",
-        callback=upload_callback,
-    )
-
-    await client.upload_directory("/dest/", local_dir)
-
-    assert len(uploaded_urls) == 1
-    assert uploaded_urls[0] == "https://webdav.example.com/dest/hello.txt"
-
-
-async def test_upload_file_progress_and_force(
-    responses: aiointercept, tmp_path: Any
-) -> None:
-    """Test upload file progress and force."""
-    local_path = Path(tmp_path) / "file.txt"
-    local_path.write_text("content")
-
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "MKCOL",
-        headers={"Accept": "*/*", "Connection": "Keep-Alive"},
-        status=201,
-    )
-
-    async def upload_callback(_url: str, **_kwargs: dict[str, Any]) -> CallbackResult:
-        return CallbackResult(status=201)
-
-    responses.add(
-        "https://webdav.example.com/test_dir/file.txt",
-        "PUT",
-        headers={"Accept": "*/*"},
-        callback=upload_callback,
-    )
-    responses.add(
-        "https://webdav.example.com/test_dir/file.txt",
-        "PUT",
-        headers={"Accept": "*/*"},
-        callback=upload_callback,
-    )
-
-    progress_calls = []
-
-    def on_progress(current: int, total: int | None) -> None:
-        progress_calls.append((current, total))
-
-    async with Client(
-        url="https://webdav.example.com", username="u", password="p"
-    ) as temp_client:
-        await temp_client.upload_file(
-            "/test_dir/file.txt", local_path, progress=on_progress, force=True
-        )
-    assert progress_calls[0][0] == 0
-
-
-async def test_upload_file_validations(client: Client, tmp_path: Any) -> None:
-    """Test upload file validations."""
-    local_missing = Path(tmp_path) / "missing.txt"
-    with pytest.raises(LocalResourceNotFoundError):
-        await client.upload_file("/test.txt", local_missing)
-
-    local_dir = Path(tmp_path) / "dir"
-    local_dir.mkdir(parents=True)
-    with pytest.raises(OptionNotValidError):
-        await client.upload_file("/test.txt", local_dir)
-
-    local_file = Path(tmp_path) / "file.txt"
-    local_file.write_text("content")
-    with pytest.raises(OptionNotValidError):
-        await client.upload_file("/test_dir/", local_file)
-
-
-async def test_copy_directory_adds_depth(
-    client: Client, responses: aiointercept
-) -> None:
-    """Test copy directory adds depth."""
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("is_dir_directory.xml"),
-    )
-
-    def callback(_url: str, **kwargs: dict[str, Any]) -> CallbackResult:
-        assert kwargs["headers"]["Depth"] == "2"
-        return CallbackResult(status=201)
-
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "COPY",
-        headers={"Accept": "*/*"},
-        callback=callback,
-    )
-    await client.copy("/test_dir/", "/test_dir_copy/", depth=2)
-
-
-async def test_lock_and_lock_client_headers(
-    client: Client, responses: aiointercept
-) -> None:
-    """Test lock and lock client headers."""
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "LOCK",
-        headers={"Lock-Token": "<token123>"},
-        status=200,
-    )
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "UNLOCK",
-        status=204,
-    )
-
-    lock_client = await client.lock("/test_dir/")
-    headers = lock_client.get_headers("check")
-    assert headers["Lock-Token"] == "<token123>"
-    assert headers["If"] == "(<token123>)"
-    await lock_client.__aexit__()
-
-
-async def test_lock_with_timeout_header(
-    client: Client, responses: aiointercept
-) -> None:
-    """Test lock with timeout header."""
-
-    def callback(_url: str, **kwargs: dict[str, Any]) -> CallbackResult:
-        assert kwargs["headers"]["Timeout"] == "Second-10"
-        return CallbackResult(status=200, headers={"Lock-Token": "<token>"})
-
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "LOCK",
-        headers={"Lock-Token": "<token>"},
-        callback=callback,
-    )
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "UNLOCK",
-        status=204,
-    )
-
-    lock_client = await client.lock("/test_dir/", timeout=10)
-    await lock_client.__aexit__()
-
-
-async def test_resource_factory(client: Client) -> None:
-    """Test resource factory."""
-    resource = client.resource("/test_dir/test.txt")
-    assert str(resource) == "resource /test_dir/test.txt"
-
-
-async def test_is_local_more_recent(
-    client: Client, responses: aiointercept, tmp_path: Any
-) -> None:
-    """Test is local more recent."""
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "1"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("get_info.xml"),
-    )
-    local_path = Path(tmp_path) / "test.txt"
-    local_path.write_text("content")
-    now = time.time() + 10
-    os.utime(str(local_path), (now, now))
-    assert await client.is_local_more_recent(local_path, "/test_dir/test.txt")
-
-
-async def test_is_local_more_recent_error(
-    client: Client, responses: aiointercept, tmp_path: Any
-) -> None:
-    """Test is local more recent error."""
-    responses.add(
-        "https://webdav.example.com/test_dir/test.txt",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "1"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("get_info.xml"),
-    )
-    local_path = Path(tmp_path) / "test.txt"
-    local_path.write_text("content")
-    local_path = Path(tmp_path) / "missing.txt"
-    with pytest.raises(FileNotFoundError):
-        await client.is_local_more_recent(local_path, "/test_dir/test.txt")
-
-
-async def test_push_pull_sync(
-    client: Client, responses: aiointercept, tmp_path: Any
-) -> None:
-    """Test push pull sync."""
-    local_dir = Path(tmp_path) / "local"
-    local_dir.mkdir(parents=True)
-    local_file = local_dir / "local.txt"
-    local_file.write_text("content")
-
-    responses.add(
-        "https://webdav.example.com/remote/",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("is_dir_directory.xml").replace("/test_dir/", "/remote/"),
-    )
-    responses.add(
-        "https://webdav.example.com/remote/",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("is_dir_directory.xml").replace("/test_dir/", "/remote/"),
-    )
-    responses.add(
-        "https://webdav.example.com/remote/",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("is_dir_directory.xml").replace("/test_dir/", "/remote/"),
-    )
-    list_body_sync = (
-        '<?xml version="1.0" encoding="utf-8"?>'
-        '<D:multistatus xmlns:D="DAV:">'
-        "<D:response><D:href>/remote/</D:href>"
-        "<D:propstat><D:prop><D:resourcetype><D:collection/>"
-        "</D:resourcetype></D:prop></D:propstat></D:response>"
-        "</D:multistatus>"
-    )
-    responses.add(
-        "https://webdav.example.com/remote/",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "1"},
-        content_type="application/xml",
-        status=200,
-        body=list_body_sync,
-    )
-    responses.add(
-        "https://webdav.example.com/remote/local.txt",
-        "GET",
-        status=200,
-        body=b"remote",
-        headers={"content-length": "6"},
-    )
-    responses.add(
-        "https://webdav.example.com/remote/local.txt",
-        "GET",
-        status=200,
-        body=b"remote",
-        headers={"content-length": "6"},
-    )
-    responses.add(
-        "https://webdav.example.com/remote/local.txt",
-        "GET",
-        status=200,
-        body=b"remote",
-        headers={"content-length": "6"},
-    )
-    responses.add(
-        "https://webdav.example.com/remote/local.txt",
-        "GET",
-        status=200,
-        body=b"remote",
-        headers={"content-length": "6"},
-    )
-    responses.add(
-        "https://webdav.example.com/remote/",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "1"},
-        content_type="application/xml",
-        status=200,
-        body=list_body_sync,
-    )
-    responses.add(
-        "https://webdav.example.com/remote/local.txt",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "1"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("get_info.xml").replace(
-            "/test_dir/test.txt", "/remote/local.txt"
-        ),
-    )
-    responses.add(
-        re.compile(r"https://webdav\.example\.com/remote/.+"),
-        "PUT",
-        headers={"Accept": "*/*"},
-        status=201,
-    )
-    responses.add(
-        "https://webdav.example.com/remote/local.txt",
-        "GET",
-        status=200,
-        body=b"remote",
-        headers={"content-length": "6"},
-    )
-
-    updated = await client.push("/remote/", local_dir)
-    assert updated
-
-    updated = await client.pull("/remote/", local_dir)
-    assert updated is False
-
-    responses.add(
-        "https://webdav.example.com/remote/",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("is_dir_directory.xml").replace("/test_dir/", "/remote/"),
-    )
-    responses.add(
-        "https://webdav.example.com/remote/",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "0"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("is_dir_directory.xml").replace("/test_dir/", "/remote/"),
-    )
-    responses.add(
-        "https://webdav.example.com/remote/",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "1"},
-        content_type="application/xml",
-        status=200,
-        body=list_body_sync,
-    )
-    responses.add(
-        re.compile(r"https://webdav\.example\.com/remote/.+"),
-        "PUT",
-        headers={"Accept": "*/*"},
-        status=201,
-    )
-    with pytest.raises(OSError, match=r".+"):
-        await client.sync("/remote/", local_dir)
-
-
-async def test_publish_unpublish(client: Client, responses: aiointercept) -> None:
-    """Test publish unpublish."""
-    responses.add(
-        "https://webdav.example.com/test.txt",
-        "PROPPATCH",
-        headers={"Accept": "*/*", "Depth": "0"},
-        status=207,
-    )
-    responses.add(
-        "https://webdav.example.com/test.txt",
-        "PROPPATCH",
-        headers={"Accept": "*/*", "Depth": "0"},
-        status=207,
-    )
-
-    await client.publish("/test.txt")
-    await client.unpublish("/test.txt")
-
-
-async def test_download_directory_concurrent(
-    client: Client, responses: aiointercept, tmp_path: Any
-) -> None:
-    """Test download directory with concurrency > 1 downloads all files."""
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "PROPFIND",
-        headers={"Accept": "*/*", "Depth": "1"},
-        content_type="application/xml",
-        status=200,
-        body=load_responses("get_list_multiple.xml"),
-    )
-    for name in ("a.txt", "b.txt", "c.txt"):
-        responses.add(
-            f"https://webdav.example.com/test_dir/{name}",
-            "GET",
-            body=f"{name} content".encode(),
-            headers={"content-length": str(len(f"{name} content"))},
-            status=200,
-        )
-
-    local_dir = Path(tmp_path) / "concurrent_dl"
-    await client.download_directory("/test_dir/", local_dir, concurrency=3)
-
-    for name in ("a.txt", "b.txt", "c.txt"):
-        assert (local_dir / name).exists()
-        assert (local_dir / name).read_text() == f"{name} content"
-
-
-async def test_upload_directory_concurrent(
-    client: Client, responses: aiointercept, tmp_path: Any
-) -> None:
-    """Test upload directory with concurrency > 1 uploads all files."""
-    local_dir = Path(tmp_path) / "concurrent_ul"
-    local_dir.mkdir(parents=True)
-    for name in ("a.txt", "b.txt", "c.txt"):
-        (local_dir / name).write_text(f"{name} content")
-
-    responses.add(
-        "https://webdav.example.com/test_dir/",
-        "MKCOL",
-        headers={"Accept": "*/*", "Connection": "Keep-Alive"},
-        status=201,
-    )
-    uploaded_urls: list[str] = []
-
-    def upload_callback(_url: str, **_kwargs: dict[str, Any]) -> CallbackResult:
-        uploaded_urls.append(str(_url))
-        return CallbackResult(status=201)
-
-    responses.add(
-        re.compile(r"https://webdav\.example\.com/test_dir/.+"),
-        "PUT",
-        headers={"Accept": "*/*"},
-        callback=upload_callback,
-    )
-    # Must add enough responses for 3 files
-    responses.add(
-        re.compile(r"https://webdav\.example\.com/test_dir/.+"),
-        "PUT",
-        headers={"Accept": "*/*"},
-        callback=upload_callback,
-    )
-    responses.add(
-        re.compile(r"https://webdav\.example\.com/test_dir/.+"),
-        "PUT",
-        headers={"Accept": "*/*"},
-        callback=upload_callback,
-    )
-
-    await client.upload_directory("/test_dir/", local_dir, concurrency=3)
-
-    assert len(uploaded_urls) == 3
-
-
-async def test_download_directory_rejects_invalid_concurrency(
-    client: Client, tmp_path: Any
-) -> None:
-    """Test download_directory rejects concurrency < 1."""
-    local_dir = Path(tmp_path) / "dl"
-    with pytest.raises(OptionNotValidError):
-        await client.download_directory("/test_dir/", local_dir, concurrency=0)
-    with pytest.raises(OptionNotValidError):
-        await client.download_directory("/test_dir/", local_dir, concurrency=-1)
-
-
-async def test_upload_directory_rejects_invalid_concurrency(
-    client: Client, tmp_path: Any
-) -> None:
-    """Test upload_directory rejects concurrency < 1."""
-    local_dir = Path(tmp_path) / "ul"
-    local_dir.mkdir(parents=True)
-    with pytest.raises(OptionNotValidError):
-        await client.upload_directory("/test_dir/", local_dir, concurrency=0)
-    with pytest.raises(OptionNotValidError):
-        await client.upload_directory("/test_dir/", local_dir, concurrency=-1)
+    """Test write accepts file-like objects."""
+    responses.add("https://webdav.example.com/file.txt", "PUT", status=201)
+    await client.write("/file.txt", io.BytesIO(b"content"))
