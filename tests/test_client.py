@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import re
 import time
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
 from aiointercept import CallbackResult, aiointercept
@@ -802,6 +802,24 @@ async def test_get_headers_with_token() -> None:
         assert headers["Authorization"] == "Bearer mytoken"
 
 
+async def test_execute_request_uses_basic_auth_header(
+    client: Client, responses: aiointercept
+) -> None:
+    """Test execute request uses basic auth header."""
+
+    def callback(_url: str, **kwargs: dict[str, Any]) -> CallbackResult:
+        assert kwargs["headers"]["Authorization"] == "Basic dXNlcjpwYXNzd29yZA=="
+        return CallbackResult(status=200)
+
+    responses.add(
+        "https://webdav.example.com/test.txt",
+        "GET",
+        callback=callback,
+    )
+
+    await client.execute_request("download", "/test.txt")
+
+
 async def test_execute_request_connection_error(responses: aiointercept) -> None:
     """Test execute request connection error."""
     responses.add(
@@ -840,7 +858,9 @@ async def test_execute_request_response_error() -> None:
         url="https://webdav.example.com",
         username="u",
         password="p",
-        options=ClientOptions(session=ResponseErrorSession()),
+        options=ClientOptions(
+            session=cast("aiohttp.ClientSession", ResponseErrorSession())
+        ),
     ) as client:
         with pytest.raises(ConnectionExceptionError):
             await client.check("/fail")
