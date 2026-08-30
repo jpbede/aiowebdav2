@@ -183,7 +183,7 @@ dev = [
     { name = "coverage", extras = ["toml"], specifier = "==7.16.0" },
     { name = "mypy", specifier = "==2.3.1" },
     { name = "pre-commit-hooks", specifier = "==6.0.0" },
-    { name = "prek", specifier = ">=0.1.0" },
+    { name = "prek", specifier = "==0.4.13" },
     { name = "pylint", specifier = "==4.0.8" },
     { name = "pytest", specifier = "==9.1.1" },
     { name = "pytest-asyncio", specifier = "==1.4.0" },
