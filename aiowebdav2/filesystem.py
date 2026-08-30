@@ -15,7 +15,7 @@ from ._paths import normalize_path, parent_path
 from .client import Client
 from .exceptions import LocalResourceNotFoundError, OptionNotValidError
 
-ProgressCallback = Callable[[int, int | None], None | Awaitable[None]]
+ProgressCallback = Callable[[int, int | None], Awaitable[None] | None]
 _Rglob = Callable[[Path], Awaitable[list[Path]]]
 _Rmtree = Callable[[Path], Awaitable[None]]
 

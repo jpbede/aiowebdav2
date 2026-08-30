@@ -147,6 +147,7 @@ ignore = [
     "DTZ007",
     "ASYNC109",
     "ASYNC240",
+    "CPY001",
 ]
 select = ["ALL"]
 
