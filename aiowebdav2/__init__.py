@@ -1,5 +1,6 @@
 """Async Python WebDAV client."""
 
+from ._progress import ProgressCallback
 from .client import Client, ClientOptions, Lock, ResponseIterator
 from .exceptions import (
     AccessDeniedError,
@@ -39,6 +40,7 @@ __all__ = [
     "NotFoundError",
     "NotValidError",
     "OptionNotValidError",
+    "ProgressCallback",
     "Property",
     "PropertyRequest",
     "QuotaInfo",

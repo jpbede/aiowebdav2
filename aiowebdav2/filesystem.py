@@ -2,7 +2,6 @@
 
 import asyncio
 from collections.abc import AsyncIterable, Awaitable, Callable, Coroutine, Iterable
-import inspect
 from pathlib import Path
 from posixpath import relpath
 import shutil
@@ -12,10 +11,10 @@ import aiofiles
 import aiofiles.os
 
 from ._paths import normalize_path, parent_path
+from ._progress import ProgressCallback, call_progress as _call_progress
 from .client import Client
 from .exceptions import LocalResourceNotFoundError, OptionNotValidError
 
-ProgressCallback = Callable[[int, int | None], Awaitable[None] | None]
 _Rglob = Callable[[Path], Awaitable[list[Path]]]
 _Rmtree = Callable[[Path], Awaitable[None]]
 
@@ -26,18 +25,6 @@ def _sync_rglob(path: Path) -> list[Path]:
 
 _async_rglob = cast("_Rglob", aiofiles.os.wrap(_sync_rglob))
 _async_rmtree = cast("_Rmtree", aiofiles.os.wrap(shutil.rmtree))
-
-
-async def _call_progress(
-    progress: ProgressCallback | None,
-    current: int,
-    total: int | None,
-) -> None:
-    if progress is None:
-        return
-    result = progress(current, total)
-    if inspect.isawaitable(result):
-        await result
 
 
 async def download_file(
@@ -90,15 +77,11 @@ async def upload_file(
     total = (await aiofiles.os.stat(local_path)).st_size
 
     async def chunks() -> AsyncIterable[bytes]:
-        current = 0
-        await _call_progress(progress, current, total)
         async with aiofiles.open(local_path, "rb") as local_file:
             while chunk := await local_file.read(client.chunk_size):
-                current += len(chunk)
                 yield chunk
-                await _call_progress(progress, current, total)
 
-    await client.write(remote_path, chunks(), content_length=total)
+    await client.write(remote_path, chunks(), content_length=total, progress=progress)
 
 
 async def download_tree(

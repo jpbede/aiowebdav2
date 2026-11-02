@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterable
 import contextlib
 from typing import TYPE_CHECKING, Self
 
 from ._http import ClientOptions, WebDavHttp
 from ._paths import base_path, normalize_path, parent_path, same_path
+from ._progress import with_progress
 from ._xml import (
     find_resource,
     lock_body,
@@ -23,19 +25,20 @@ from .exceptions import (
     ConflictError,
     InvalidResponseError,
     MethodNotSupportedError,
+    OptionNotValidError,
     RemoteParentNotFoundError,
     RemoteResourceNotFoundError,
 )
 
 if TYPE_CHECKING:
     import builtins
-    from collections.abc import AsyncIterable
     from types import TracebackType
     from typing import IO
 
     from aiohttp import ClientResponse, ClientTimeout
 
     from ._http import RequestData
+    from ._progress import ProgressCallback
     from .models import Property, PropertyRequest, QuotaInfo, ResourceInfo
 
 DEFAULT_ROOT = "/"
@@ -331,12 +334,22 @@ class Client:
         content_length: int | None = None,
         timeout: ClientTimeout | None = None,
         lock_token: str | None = None,
+        progress: ProgressCallback | None = None,
     ) -> None:
-        """Write data to a remote resource."""
+        """Write data to a remote resource.
+
+        progress is called with (bytes handed off, content_length) before the
+        first chunk and after each chunk. It requires data to be an async
+        iterable.
+        """
         remote_path = normalize_path(path)
         headers: dict[str, str] = {}
         if content_length is not None:
             headers["Content-Length"] = str(content_length)
+        if progress is not None:
+            if not isinstance(data, AsyncIterable):
+                raise OptionNotValidError(name="data", value=type(data).__name__)
+            data = with_progress(data, progress, content_length)
 
         try:
             response = await self.request(
@@ -502,6 +515,7 @@ class Lock:
         data: bytes | str | IO[bytes] | AsyncIterable[bytes],
         *,
         content_length: int | None = None,
+        progress: ProgressCallback | None = None,
     ) -> None:
         """Write to the locked resource."""
         await self.client.write(
@@ -509,4 +523,5 @@ class Lock:
             data,
             content_length=content_length,
             lock_token=self.token,
+            progress=progress,
         )

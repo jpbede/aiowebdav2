@@ -53,7 +53,7 @@ Main remote operations:
 - `move(source, target, overwrite=False) -> None`
 - `read(path) -> bytes`
 - `await iter_read(path) -> ResponseIterator` (request errors raise on await; the response is released at EOF, on error, on `aclose()` and on GC)
-- `write(path, data, content_length=None) -> None`
+- `write(path, data, content_length=None, progress=None) -> None` (`progress(current, total)` needs `data` to be an async iterable)
 - `quota() -> QuotaInfo`
 - `get_property(path, property_request) -> Property | None`
 - `get_properties(path, property_requests) -> list[Property]`

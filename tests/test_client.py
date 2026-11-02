@@ -1,7 +1,7 @@
 """Tests for the public remote client API."""
 
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 import gc
 import io
 from typing import Any, cast
@@ -12,7 +12,7 @@ from multidict import CIMultiDict, CIMultiDictProxy
 import pytest
 import yarl
 
-from aiowebdav2 import Client, ClientOptions
+from aiowebdav2 import Client, ClientOptions, ProgressCallback
 from aiowebdav2.exceptions import (
     AccessDeniedError,
     ConnectionExceptionError,
@@ -20,6 +20,7 @@ from aiowebdav2.exceptions import (
     MethodNotSupportedError,
     NoConnectionError,
     NotEnoughSpaceError,
+    OptionNotValidError,
     RemoteParentNotFoundError,
     RemoteResourceNotFoundError,
     ResourceLockedError,
@@ -257,6 +258,58 @@ async def test_read_iter_read_and_write(
 
     responses.add("https://webdav.example.com/file.txt", "PUT", callback=callback)
     await client.write("/file.txt", stream(), content_length=11)
+
+
+def _async_progress(callback: ProgressCallback) -> ProgressCallback:
+    """Wrap a sync progress callback in an async one."""
+
+    async def _progress(current: int, total: int | None) -> None:
+        callback(current, total)
+
+    return _progress
+
+
+@pytest.mark.parametrize(
+    "make_progress",
+    [
+        pytest.param(lambda callback: callback, id="sync"),
+        pytest.param(_async_progress, id="async"),
+    ],
+)
+async def test_write_reports_progress(
+    client: Client,
+    responses: aiointercept,
+    make_progress: Callable[[ProgressCallback], ProgressCallback],
+) -> None:
+    """Test write reports progress for async iterable data."""
+    calls: list[tuple[int, int | None]] = []
+
+    def record(current: int, total: int | None) -> None:
+        calls.append((current, total))
+
+    async def stream() -> AsyncGenerator[bytes]:
+        yield b"new "
+        yield b"content"
+
+    async def callback(_url: str, **kwargs: Any) -> CallbackResult:
+        assert kwargs["data"] == b"new content"
+        return CallbackResult(status=201)
+
+    responses.add("https://webdav.example.com/file.txt", "PUT", callback=callback)
+    await client.write(
+        "/file.txt",
+        stream(),
+        content_length=11,
+        progress=make_progress(record),
+    )
+
+    assert calls == [(0, 11), (4, 11), (11, 11)]
+
+
+async def test_write_progress_requires_async_iterable(client: Client) -> None:
+    """Test write rejects progress for data which is not streamed."""
+    with pytest.raises(OptionNotValidError):
+        await client.write("/file.txt", b"content", progress=lambda _c, _t: None)
 
 
 async def test_iter_read_raises_before_iteration(
