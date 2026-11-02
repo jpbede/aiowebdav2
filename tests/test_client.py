@@ -1,6 +1,8 @@
 """Tests for the public remote client API."""
 
+import asyncio
 from collections.abc import AsyncGenerator
+import gc
 import io
 from typing import Any, cast
 
@@ -32,7 +34,7 @@ from . import load_responses
 class _StreamContent:
     """Minimal response content stream for release tests."""
 
-    def __init__(self, chunks: list[bytes]) -> None:
+    def __init__(self, chunks: list[bytes | BaseException]) -> None:
         """Initialize the stream."""
         self._chunks = chunks
 
@@ -40,7 +42,10 @@ class _StreamContent:
         """Return the next response chunk."""
         if not self._chunks:
             return b""
-        return self._chunks.pop(0)
+        chunk = self._chunks.pop(0)
+        if isinstance(chunk, BaseException):
+            raise chunk
+        return chunk
 
 
 class _StreamingResponse:
@@ -49,11 +54,11 @@ class _StreamingResponse:
     status = 200
     method = "GET"
 
-    def __init__(self, chunks: list[bytes]) -> None:
+    def __init__(self, chunks: list[bytes | BaseException]) -> None:
         """Initialize the response."""
         self.content = _StreamContent(chunks)
         self.headers: dict[str, str] = {}
-        self.released = False
+        self.release_count = 0
 
     async def read(self) -> bytes:
         """Return the response body."""
@@ -64,7 +69,7 @@ class _StreamingResponse:
 
     def release(self) -> None:
         """Release the response."""
-        self.released = True
+        self.release_count += 1
 
 
 class _StreamingSession:
@@ -238,7 +243,7 @@ async def test_read_iter_read_and_write(
     responses.add(
         "https://webdav.example.com/file.txt", "GET", body=b"stream", status=200
     )
-    chunks = [chunk async for chunk in client.iter_read("/file.txt")]
+    chunks = [chunk async for chunk in await client.iter_read("/file.txt")]
     assert chunks == [b"stream"]
 
     async def stream() -> AsyncGenerator[bytes]:
@@ -254,6 +259,17 @@ async def test_read_iter_read_and_write(
     await client.write("/file.txt", stream(), content_length=11)
 
 
+async def test_iter_read_raises_before_iteration(
+    client: Client,
+    responses: aiointercept,
+) -> None:
+    """Test iter_read raises request errors before the body is iterated."""
+    responses.add("https://webdav.example.com/missing.txt", "GET", status=404)
+
+    with pytest.raises(RemoteResourceNotFoundError):
+        await client.iter_read("/missing.txt")
+
+
 async def test_iter_read_releases_response_on_early_close() -> None:
     """Test streamed responses are released when callers stop early."""
     response = _StreamingResponse([b"first", b"second"])
@@ -261,12 +277,108 @@ async def test_iter_read_releases_response_on_early_close() -> None:
         "https://webdav.example.com",
         options=ClientOptions(session=_client_session(_StreamingSession(response))),
     )
-    stream = cast("AsyncGenerator[bytes]", client.iter_read("/file.txt"))
+    stream = cast("AsyncGenerator[bytes]", await client.iter_read("/file.txt"))
 
     assert await anext(stream) == b"first"
     await stream.aclose()
 
-    assert response.released
+    assert response.release_count == 1
+
+
+def _streaming_client(response: _StreamingResponse) -> Client:
+    """Return a client which answers every request with the given response."""
+    return Client(
+        "https://webdav.example.com",
+        options=ClientOptions(session=_client_session(_StreamingSession(response))),
+    )
+
+
+async def test_iter_read_releases_response_at_eof() -> None:
+    """Test a fully read stream releases the response once."""
+    response = _StreamingResponse([b"first", b"second"])
+    stream = await _streaming_client(response).iter_read("/file.txt")
+
+    assert [chunk async for chunk in stream] == [b"first", b"second"]
+    await stream.aclose()
+
+    assert response.release_count == 1
+    with pytest.raises(StopAsyncIteration):
+        await anext(stream)
+
+
+async def test_iter_read_releases_response_closed_before_reading() -> None:
+    """Test closing a stream before the first read releases the response."""
+    response = _StreamingResponse([b"first"])
+    stream = await _streaming_client(response).iter_read("/file.txt")
+
+    await stream.aclose()
+
+    assert response.release_count == 1
+    with pytest.raises(StopAsyncIteration):
+        await anext(stream)
+
+
+async def test_iter_read_releases_response_when_garbage_collected() -> None:
+    """Test a stream dropped before the first read releases the response."""
+    response = _StreamingResponse([b"first"])
+    stream = await _streaming_client(response).iter_read("/file.txt")
+
+    del stream
+    gc.collect()
+
+    assert response.release_count == 1
+
+
+async def test_iter_read_releases_response_collected_in_other_thread() -> None:
+    """Test a stream collected outside the event loop releases on the loop."""
+    response = _StreamingResponse([b"first"])
+    stream = await _streaming_client(response).iter_read("/file.txt")
+
+    await asyncio.to_thread(stream.__del__)
+    await asyncio.sleep(0)
+
+    assert response.release_count == 1
+    del stream
+    assert response.release_count == 1
+
+
+def test_iter_read_skips_release_when_loop_closed() -> None:
+    """Test a stream collected after its loop closed does not touch the loop."""
+    response = _StreamingResponse([b"first"])
+    loop = asyncio.new_event_loop()
+    stream = loop.run_until_complete(_streaming_client(response).iter_read("/file.txt"))
+    loop.close()
+
+    del stream
+    gc.collect()
+
+    assert response.release_count == 0
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_error"),
+    [
+        (aiohttp.ClientPayloadError("broken"), aiohttp.ClientPayloadError),
+        (asyncio.CancelledError(), RuntimeError),
+    ],
+    ids=["read_error", "cancelled"],
+)
+async def test_iter_read_releases_response_on_read_error(
+    error: BaseException,
+    expected_error: type[BaseException],
+) -> None:
+    """Test a failed read releases the response and is not mistaken for EOF."""
+    response = _StreamingResponse([b"first", error, b"second"])
+    stream = await _streaming_client(response).iter_read("/file.txt")
+
+    assert await anext(stream) == b"first"
+    with pytest.raises(type(error)):
+        await anext(stream)
+
+    assert response.release_count == 1
+    with pytest.raises(expected_error):
+        await anext(stream)
+    assert response.release_count == 1
 
 
 async def test_discarded_response_is_released() -> None:
@@ -279,7 +391,7 @@ async def test_discarded_response_is_released() -> None:
 
     await client.delete("/file.txt")
 
-    assert response.released
+    assert response.release_count == 1
 
 
 async def test_write_parent_missing(
@@ -394,7 +506,7 @@ async def test_lock_read_helpers(client: Client, responses: aiointercept) -> Non
 
     async with await client.lock("/file.txt") as lock:
         assert await lock.read() == b"content"
-        assert [chunk async for chunk in lock.iter_read()] == [b"stream"]
+        assert [chunk async for chunk in await lock.iter_read()] == [b"stream"]
 
 
 async def test_auth_and_session_lifetime(responses: aiointercept) -> None:

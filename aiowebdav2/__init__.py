@@ -1,6 +1,6 @@
 """Async Python WebDAV client."""
 
-from .client import Client, ClientOptions, Lock
+from .client import Client, ClientOptions, Lock, ResponseIterator
 from .exceptions import (
     AccessDeniedError,
     CertificateNotValidError,
@@ -47,6 +47,7 @@ __all__ = [
     "ResourceInfo",
     "ResourceLockedError",
     "ResponseErrorCodeError",
+    "ResponseIterator",
     "UnauthorizedError",
     "WebDavError",
 ]

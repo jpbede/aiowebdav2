@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from typing import TYPE_CHECKING, Self
 
 from ._http import ClientOptions, WebDavHttp
@@ -27,7 +29,7 @@ from .exceptions import (
 
 if TYPE_CHECKING:
     import builtins
-    from collections.abc import AsyncIterable, AsyncIterator
+    from collections.abc import AsyncIterable
     from types import TracebackType
     from typing import IO
 
@@ -39,13 +41,80 @@ if TYPE_CHECKING:
 DEFAULT_ROOT = "/"
 
 
-async def _iter_content(
-    response: ClientResponse,
-    chunk_size: int,
-) -> AsyncIterator[bytes]:
-    """Yield response body chunks."""
-    while chunk := await response.content.read(chunk_size):
-        yield chunk
+class ResponseIterator:
+    """Async iterator over a response body which releases the response.
+
+    The response is released when the body is fully read, when reading fails,
+    when close() or aclose() is called and when the iterator is garbage
+    collected, also if iteration never started. After a read error, further
+    reads raise the same error, so a truncated body is not mistaken for a
+    complete one.
+    """
+
+    __slots__ = ("_chunk_size", "_closed", "_error", "_loop", "_response")
+
+    def __init__(self, response: ClientResponse, chunk_size: int) -> None:
+        """Initialize the iterator."""
+        self._response = response
+        self._chunk_size = chunk_size
+        self._loop = asyncio.get_running_loop()
+        self._closed = False
+        self._error: Exception | None = None
+
+    def __aiter__(self) -> Self:
+        """Return self."""
+        return self
+
+    async def __anext__(self) -> bytes:
+        """Return the next chunk of the response body."""
+        if self._error is not None:
+            raise self._error
+        if self._closed:
+            raise StopAsyncIteration
+        try:
+            chunk = await self._response.content.read(self._chunk_size)
+        except BaseException as err:
+            # Don't re-raise a cancellation in a task which was not cancelled
+            self._error = (
+                err
+                if isinstance(err, Exception)
+                else RuntimeError("Reading the response was interrupted")
+            )
+            self.close()
+            raise
+        if not chunk:
+            self.close()
+            raise StopAsyncIteration
+        return chunk
+
+    def close(self) -> None:
+        """Release the response and stop iteration."""
+        if not self._closed:
+            self._closed = True
+            self._response.release()
+
+    async def aclose(self) -> None:
+        """Release the response and stop iteration."""
+        self.close()
+
+    def __del__(self) -> None:
+        """Release the response on its event loop when garbage collected."""
+        if self._closed:
+            return
+        self._closed = True
+        loop = self._loop
+        if loop.is_closed():
+            return
+        try:
+            running_loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+        if running_loop is loop:
+            self._response.release()
+            return
+        # The loop may be closed concurrently
+        with contextlib.suppress(RuntimeError):
+            loop.call_soon_threadsafe(self._response.release)
 
 
 class Client:
@@ -245,14 +314,14 @@ class Client:
         path: str,
         *,
         timeout: ClientTimeout | None = None,
-    ) -> AsyncIterator[bytes]:
-        """Stream a remote resource."""
+    ) -> ResponseIterator:
+        """Stream a remote resource.
+
+        The request is sent before this returns, so errors are raised on await
+        instead of on first iteration.
+        """
         response = await self.request("GET", normalize_path(path), timeout=timeout)
-        try:
-            async for chunk in _iter_content(response, self.chunk_size):
-                yield chunk
-        finally:
-            response.release()
+        return ResponseIterator(response, self.chunk_size)
 
     async def write(
         self,
@@ -424,10 +493,9 @@ class Lock:
         """Read the locked resource."""
         return await self.client.read(self.path)
 
-    async def iter_read(self) -> AsyncIterator[bytes]:
+    async def iter_read(self) -> ResponseIterator:
         """Stream the locked resource."""
-        async for chunk in self.client.iter_read(self.path):
-            yield chunk
+        return await self.client.iter_read(self.path)
 
     async def write(
         self,

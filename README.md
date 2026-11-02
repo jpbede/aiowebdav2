@@ -52,7 +52,7 @@ Main remote operations:
 - `copy(source, target, depth=None, overwrite=True) -> None`
 - `move(source, target, overwrite=False) -> None`
 - `read(path) -> bytes`
-- `iter_read(path) -> AsyncIterator[bytes]`
+- `await iter_read(path) -> ResponseIterator` (request errors raise on await; the response is released at EOF, on error, on `aclose()` and on GC)
 - `write(path, data, content_length=None) -> None`
 - `quota() -> QuotaInfo`
 - `get_property(path, property_request) -> Property | None`
