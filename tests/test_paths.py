@@ -26,6 +26,9 @@ from aiowebdav2.exceptions import OptionNotValidError
         ("file#anchor", {}, "/file#anchor"),
         ("file?query", {}, "/file?query"),
         ("https://example.com/file?query#anchor", {}, "/file"),
+        ("//file.tar", {}, "/file.tar"),
+        ("///dir//file.tar", {}, "/dir/file.tar"),
+        ("//dir/", {}, "/dir/"),
     ],
 )
 def test_normalize_path(path: str, kwargs: dict[str, bool], expected: str) -> None:
@@ -72,6 +75,12 @@ def test_basename(path: str, expected: str) -> None:
             "/file.txt",
             "https://example.com/dav/root/file.txt",
         ),
+        (
+            "https://example.com/dav/",
+            "/",
+            "//file.txt",
+            "https://example.com/dav/file.txt",
+        ),
     ],
 )
 def test_join_url(base_url: str, root: str, path: str, expected: str) -> None:
@@ -88,6 +97,7 @@ def test_base_path() -> None:
     ("root", "path"),
     [
         ("/", "/../escape"),
+        ("/", "//../escape"),
         ("/", "/%2e%2e/escape"),
         ("/./root/", "/file.txt"),
         ("/root/", "/dir/./file.txt"),
