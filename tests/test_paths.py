@@ -129,6 +129,9 @@ def test_join_url_rejects_relative_path_components(root: str, path: str) -> None
         ("/dav/root/a%20b.txt", "/dav/root/", {}, "/a b.txt"),
         ("/dav/root/100%25.txt", "/dav/root/", {}, "/100%.txt"),
         ("https://example.com/dav/root/100%25.txt", "/dav/root/", {}, "/100%.txt"),
+        ("/dav/root/c:foo.txt", "/dav/root/", {}, "/c:foo.txt"),
+        ("/dav/root/c%3Afoo.txt", "/dav/root/", {}, "/c:foo.txt"),
+        ("c%3Afoo.txt", "/dav/root/", {}, "/c:foo.txt"),
         ("/dav/my%20root/file.txt", "/dav/my root/", {}, "/file.txt"),
     ],
 )

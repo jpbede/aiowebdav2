@@ -82,14 +82,16 @@ def base_path(base_url: str, root: str) -> str:
 
 def strip_base(path: str, prefix: str, *, directory: bool = False) -> str:
     """Strip a configured base path from a percent-encoded server href."""
-    normalized_path = normalize_path(unquote(_path_part(path)), directory=directory)
+    # Prefix with "/" so a colon in a relative name is not parsed as a scheme
+    decoded_path = unquote(_path_part(path))
+    normalized_path = normalize_path(f"/{decoded_path}", directory=directory)
     normalized_prefix = normalize_path(prefix, directory=True)
 
     if normalized_path.rstrip("/") == normalized_prefix.rstrip("/"):
         return "/"
     if normalized_path.startswith(normalized_prefix):
         stripped = normalized_path.removeprefix(normalized_prefix)
-        return normalize_path(stripped or "/", directory=directory)
+        return normalize_path(f"/{stripped}", directory=directory)
     return normalized_path
 
 
