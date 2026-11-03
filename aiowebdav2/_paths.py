@@ -9,6 +9,7 @@ from .exceptions import OptionNotValidError
 
 
 def _has_relative_component(path: str) -> bool:
+    # Also reject encoded dot segments, which some servers decode
     decoded_path = unquote(_path_part(path))
     return any(part in {".", ".."} for part in decoded_path.split("/"))
 
@@ -19,14 +20,19 @@ def _reject_relative_components(name: str, path: str) -> None:
 
 
 def normalize_path(path: str, *, directory: bool = False) -> str:
-    """Normalize a remote WebDAV path."""
-    decoded_path = unquote(_path_part(path))
-    trailing_slash = decoded_path.endswith("/")
+    """Normalize a remote WebDAV path.
+
+    Paths are taken literally, so percent escapes are kept. Only absolute URLs
+    are decoded, because their paths are always percent-encoded.
+    """
+    parsed = urlsplit(path)
+    path = unquote(parsed.path) if parsed.scheme else path
+    trailing_slash = path.endswith("/")
 
     # normpath keeps exactly two leading slashes, so collapse them first
-    decoded_path = f"/{decoded_path.lstrip('/')}"
+    path = f"/{path.lstrip('/')}"
 
-    normalized = normpath(decoded_path)
+    normalized = normpath(path)
     if normalized == ".":
         normalized = "/"
     if not normalized.startswith("/"):
@@ -75,8 +81,8 @@ def base_path(base_url: str, root: str) -> str:
 
 
 def strip_base(path: str, prefix: str, *, directory: bool = False) -> str:
-    """Strip a configured base path from a server href."""
-    normalized_path = normalize_path(path, directory=directory)
+    """Strip a configured base path from a percent-encoded server href."""
+    normalized_path = normalize_path(unquote(_path_part(path)), directory=directory)
     normalized_prefix = normalize_path(prefix, directory=True)
 
     if normalized_path.rstrip("/") == normalized_prefix.rstrip("/"):
@@ -88,7 +94,7 @@ def strip_base(path: str, prefix: str, *, directory: bool = False) -> str:
 
 
 def same_path(left: str, right: str) -> bool:
-    """Compare remote paths after URL decoding and normalization."""
+    """Compare remote paths after normalization."""
     return _comparison_path(left) == _comparison_path(right)
 
 
