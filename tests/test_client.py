@@ -206,6 +206,52 @@ async def test_double_leading_slash_targets_resource(
     assert await client.read("//file.tar") == b"content"
 
 
+async def test_percent_in_path_is_literal(
+    client: Client,
+    responses: aiointercept,
+) -> None:
+    """Test percent escapes in caller paths are sent literally."""
+    responses.add(
+        "https://webdav.example.com/Backups%2520Archive/x.tar", "PUT", status=201
+    )
+    responses.add(
+        "https://webdav.example.com/Backups%20Archive/x.tar", "PUT", status=201
+    )
+
+    await client.write("/Backups%20Archive/x.tar", b"literal")
+    await client.write("/Backups Archive/x.tar", b"space")
+
+
+async def test_listed_path_round_trips(
+    client: Client,
+    responses: aiointercept,
+) -> None:
+    """Test a listed path with an encoded href targets the same resource."""
+    responses.add(
+        "https://webdav.example.com/",
+        "PROPFIND",
+        content_type="application/xml",
+        status=207,
+        body=b"""<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response><d:href>/</d:href>
+    <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>
+    <d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+  <d:response><d:href>/a%2520b.txt</d:href>
+    <d:propstat><d:prop><d:resourcetype/></d:prop>
+    <d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>""",
+    )
+    responses.add(
+        "https://webdav.example.com/a%2520b.txt", "GET", body=b"content", status=200
+    )
+
+    [resource] = await client.list("/")
+
+    assert resource.path == "/a%20b.txt"
+    assert await client.read(resource.path) == b"content"
+
+
 async def test_mkdir_parent_missing(
     client: Client,
     responses: aiointercept,

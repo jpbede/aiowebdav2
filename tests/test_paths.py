@@ -29,6 +29,10 @@ from aiowebdav2.exceptions import OptionNotValidError
         ("//file.tar", {}, "/file.tar"),
         ("///dir//file.tar", {}, "/dir/file.tar"),
         ("//dir/", {}, "/dir/"),
+        ("/Backups%20Archive", {}, "/Backups%20Archive"),
+        ("/Backups%2520Archive", {}, "/Backups%2520Archive"),
+        ("/Backups Archive", {}, "/Backups Archive"),
+        ("https://example.com/a%20b", {}, "/a b"),
     ],
 )
 def test_normalize_path(path: str, kwargs: dict[str, bool], expected: str) -> None:
@@ -81,6 +85,12 @@ def test_basename(path: str, expected: str) -> None:
             "//file.txt",
             "https://example.com/dav/file.txt",
         ),
+        (
+            "https://example.com/dav/",
+            "/",
+            "/Backups%20Archive/",
+            "https://example.com/dav/Backups%2520Archive/",
+        ),
     ],
 )
 def test_join_url(base_url: str, root: str, path: str, expected: str) -> None:
@@ -116,6 +126,13 @@ def test_join_url_rejects_relative_path_components(root: str, path: str) -> None
         ("/dav/root/dir/", "/dav/root/", {"directory": True}, "/dir/"),
         ("/dav/root/", "/dav/root/", {"directory": True}, "/"),
         ("/other/file.txt", "/dav/root/", {}, "/other/file.txt"),
+        ("/dav/root/a%20b.txt", "/dav/root/", {}, "/a b.txt"),
+        ("/dav/root/100%25.txt", "/dav/root/", {}, "/100%.txt"),
+        ("https://example.com/dav/root/100%25.txt", "/dav/root/", {}, "/100%.txt"),
+        ("/dav/root/c:foo.txt", "/dav/root/", {}, "/c:foo.txt"),
+        ("/dav/root/c%3Afoo.txt", "/dav/root/", {}, "/c:foo.txt"),
+        ("c%3Afoo.txt", "/dav/root/", {}, "/c:foo.txt"),
+        ("/dav/my%20root/file.txt", "/dav/my root/", {}, "/file.txt"),
     ],
 )
 def test_strip_base(
