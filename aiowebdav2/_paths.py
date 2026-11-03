@@ -23,8 +23,8 @@ def normalize_path(path: str, *, directory: bool = False) -> str:
     decoded_path = unquote(_path_part(path))
     trailing_slash = decoded_path.endswith("/")
 
-    if not decoded_path.startswith("/"):
-        decoded_path = f"/{decoded_path}"
+    # normpath keeps exactly two leading slashes, so collapse them first
+    decoded_path = f"/{decoded_path.lstrip('/')}"
 
     normalized = normpath(decoded_path)
     if normalized == ".":
@@ -100,7 +100,9 @@ def _comparison_path(path: str) -> str:
 
 
 def _path_part(path: str) -> str:
+    # A path starting with "//" is not a network-path reference here, so only
+    # strip the authority from absolute URLs
     parsed = urlsplit(path)
-    if parsed.scheme or parsed.netloc:
+    if parsed.scheme:
         return parsed.path
     return path

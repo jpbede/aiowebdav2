@@ -190,6 +190,22 @@ async def test_mkdir_delete_copy_move(client: Client, responses: aiointercept) -
     await client.move("/b.txt", "/moved.txt", overwrite=True)
 
 
+async def test_double_leading_slash_targets_resource(
+    client: Client,
+    responses: aiointercept,
+) -> None:
+    """Test a path joined onto a "/" prefix does not target the root collection."""
+    responses.add("https://webdav.example.com/file.tar", "DELETE", status=204)
+    responses.add("https://webdav.example.com/file.tar", "PUT", status=201)
+    responses.add(
+        "https://webdav.example.com/file.tar", "GET", body=b"content", status=200
+    )
+
+    await client.delete("//file.tar")
+    await client.write("//file.tar", b"content")
+    assert await client.read("//file.tar") == b"content"
+
+
 async def test_mkdir_parent_missing(
     client: Client,
     responses: aiointercept,
